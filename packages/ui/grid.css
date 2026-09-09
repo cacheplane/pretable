@@ -229,21 +229,28 @@
     cursor: pointer;
   }
 
-  :where([data-pretable-option]:hover) {
+  :where([data-pretable-option]:hover:not([aria-disabled="true"])) {
     background: var(--pretable-bg-hover);
   }
 
-  /* The roving highlight: keyboard navigation's `data-active`, painted like
+  /* The roving highlight: keyboard navigation's `data-pretable-active`, painted like
      a hover. DECLARED BEFORE the selected rule on purpose — an option that
      is both active and committed should read as SELECTED, and at equal
      (0,0,0) specificity source order is what decides that. */
-  :where([data-pretable-option][data-active]) {
+  :where([data-pretable-option][data-pretable-active]) {
     background: var(--pretable-bg-hover);
   }
 
   :where([data-pretable-option][aria-selected="true"]) {
     background: var(--pretable-bg-selected);
     color: var(--pretable-text-selected);
+  }
+
+  /* Disabled may also be committed. Keep its selection fill, but let the
+     disabled ink and cursor win after the selected rule. */
+  :where([data-pretable-option][aria-disabled="true"]) {
+    color: var(--pretable-text-dim);
+    cursor: default;
   }
 
   /* ---- Kit components: text input --------------------------------------
@@ -253,6 +260,16 @@
      (the site rules below win by order); the element stays native, so the
      date type keeps its picker. */
   :where([data-pretable-text-input]) {
+    box-sizing: border-box;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+  }
+
+  :where([data-pretable-textarea]) {
     box-sizing: border-box;
     padding-inline: 6px;
     border: 1px solid var(--pretable-rule);
@@ -1409,6 +1426,7 @@
     /* Portaled into <body> — see the filter menu above. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
+    line-height: 1.4;
     color: var(--pretable-text-cell);
   }
 
@@ -1420,7 +1438,10 @@
     padding-bottom: 6px;
   }
 
-  :where([data-pretable-date-header] button) {
+  :where(
+    [data-pretable-date-header]
+      :is([data-pretable-date-previous-month], [data-pretable-date-next-month])
+  ) {
     border: none;
     background: none;
     color: var(--pretable-text-header);
@@ -1428,13 +1449,25 @@
     padding: 0 6px;
   }
 
-  :where([data-pretable-date-header] button:hover:not(:disabled)) {
+  :where(
+    [data-pretable-date-header]
+      :is(
+        [data-pretable-date-previous-month],
+        [data-pretable-date-next-month]
+      ):hover:not(:disabled)
+  ) {
     color: var(--pretable-accent);
   }
   /* The month steppers disable at the calendar's min/max month. Without this
      they kept the enabled colour, the pointer cursor and the hover accent —
      the same defect the menu items had. */
-  :where([data-pretable-date-header] button:disabled) {
+  :where(
+    [data-pretable-date-header]
+      :is(
+        [data-pretable-date-previous-month],
+        [data-pretable-date-next-month]
+      ):disabled
+  ) {
     color: var(--pretable-text-dim);
     cursor: default;
   }
@@ -1457,7 +1490,7 @@
     cursor: pointer;
   }
 
-  :where([data-pretable-date-day]:hover) {
+  :where([data-pretable-date-day]:hover:not([aria-disabled="true"])) {
     background: var(--pretable-bg-hover);
   }
 
@@ -1474,6 +1507,15 @@
     color: var(--pretable-text-selected);
   }
 
+  :where([data-pretable-date-day][data-pretable-date-active]) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+  :where([data-pretable-date-day][aria-disabled="true"]) {
+    color: var(--pretable-text-dim);
+    cursor: default;
+  }
+
   /* Tooltip / popover */
   :where([data-pretable-popover]) {
     background: var(--pretable-bg-tooltip);
@@ -1482,12 +1524,38 @@
     border-radius: var(--pretable-radius);
   }
 
+  /* Validation messages occupy their own line; the field keeps the full
+     column width instead of shrinking beside the error text. */
+  :where(
+    [data-pretable-cell][data-pretable-edit-status]:has(.pretable-cell-editor)
+  ) {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 0;
+  }
+  :where(
+    [data-pretable-cell][data-pretable-edit-status]
+      > :is(
+        [data-pretable-number-editor],
+        [data-pretable-enum-editor],
+        [data-pretable-date-editor]
+      )
+  ) {
+    flex: 1;
+    min-height: 0;
+  }
+
   /* Cell editor (inline editing) */
   :where(.pretable-cell-editor) {
+    border-radius: 0;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
     width: 100%;
     height: 100%;
     box-sizing: border-box;
-    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
+    padding: 2px var(--pretable-cell-padding-x);
     border: none;
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
@@ -1534,7 +1602,10 @@
     justify-content: center;
   }
 
-  :where([data-pretable-number-steppers] button) {
+  :where(
+    [data-pretable-number-steppers]
+      :is([data-pretable-number-increment], [data-pretable-number-decrement])
+  ) {
     border: none;
     background: var(--pretable-bg-header);
     color: var(--pretable-text-header);
@@ -1544,11 +1615,27 @@
     cursor: pointer;
   }
 
-  :where([data-pretable-number-steppers] button:hover) {
+  :where(
+    [data-pretable-number-steppers]
+      :is(
+        [data-pretable-number-increment],
+        [data-pretable-number-decrement]
+      ):hover:not(:disabled)
+  ) {
     background: var(--pretable-bg-hover);
   }
 
+  /* Preserve room for an ISO date and caret in narrow date columns. */
+  :where([data-pretable-date-editor] .pretable-cell-editor) {
+    padding-inline: 4px;
+  }
+
   :where([data-pretable-edit-error]) {
+    white-space: nowrap;
+    flex: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
     margin-top: 2px;
     color: var(--pretable-text-error);
     font-family: var(--pretable-font-sans);
@@ -2208,10 +2295,15 @@
     [data-pretable-icon-button]:focus-visible,
     [data-pretable-select]:focus-visible,
     [data-pretable-text-input]:focus-visible,
+    [data-pretable-textarea]:focus-visible,
     [data-pretable-checkbox]:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
+  }
+  /* Editor errors win over the generic focused-field shorthand. */
+  :where(.pretable-cell-editor[aria-invalid="true"]) {
+    outline-color: var(--pretable-text-error);
   }
   /* A checkbox rings OUTSIDE its box, alone among the kit controls. The
      square is 16px and paints to its own edge — border, fill and glyph all
@@ -2232,21 +2324,20 @@
     [data-pretable-button]:disabled,
     [data-pretable-icon-button]:disabled,
     [data-pretable-select]:disabled,
-    [data-pretable-text-input]:disabled
+    [data-pretable-text-input]:disabled,
+    [data-pretable-textarea]:disabled
   ) {
     color: var(--pretable-text-dim);
     cursor: default;
   }
-  /* The checkbox is deliberately NOT in that list. Its `color` is not ink for
-     a label, it is the CHECK GLYPH, painted on the checked fill — so dimming
-     it puts --pretable-text-dim on --pretable-checkbox-checked-bg at about
-     1.9:1 and the tick all but vanishes. A read-only boolean column renders
-     its cell control disabled on EVERY row, so that would be every tick in
-     the column. A checkbox's disabled look is its own tokens (border, fill,
-     and the shared opacity/forced-colors treatment), never text ink; all this
-     rule owes is the pointer. Declaring no `color` here also leaves the
-     checked rule above as the last word on the glyph. */
+  /* A disabled checkbox keeps a legible tick on the grid surface. Changing
+     fill together with ink avoids dim ink on an accent fill. A dashed border
+     distinguishes the unchecked disabled state without relying on opacity. */
   :where([data-pretable-checkbox]:disabled) {
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-dim);
+    border-color: var(--pretable-text-dim);
+    border-style: dashed;
     cursor: default;
   }
 
@@ -2457,6 +2548,7 @@
       [data-pretable-icon-button]:disabled,
       [data-pretable-select]:disabled,
       [data-pretable-text-input]:disabled,
+      [data-pretable-textarea]:disabled,
       [data-pretable-checkbox]:disabled
     ) {
       color: GrayText;
@@ -2481,7 +2573,85 @@
     :where([data-pretable-checkbox][aria-checked="mixed"]) {
       forced-color-adjust: none;
       background-color: Highlight;
+      border-color: Highlight;
+      outline-color: CanvasText;
       color: HighlightText;
+    }
+    /* Disabled wins over both committed selection and checked/mixed state.
+       Canvas/GrayText is the platform disabled pair. The dashed selected
+       outline preserves the committed mark without using an enabled fill. */
+    :where([data-pretable-option][aria-disabled="true"]) {
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: GrayText;
+      border-color: GrayText;
+    }
+    :where([data-pretable-option][aria-disabled="true"][aria-selected="true"]) {
+      outline: 1px dashed GrayText;
+      outline-offset: -2px;
+    }
+    /* DOM focus stays on the trigger; this is the visible roving focus.
+       currentColor pairs with Canvas, Highlight, or the disabled surface. */
+    :where([data-pretable-option][data-pretable-active]) {
+      outline: 2px solid currentColor;
+      outline-offset: -2px;
+    }
+    :where([data-pretable-checkbox]:disabled) {
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: GrayText;
+      border-color: GrayText;
+      outline-color: GrayText;
+    }
+    :where(
+      [data-pretable-number-increment],
+      [data-pretable-number-decrement],
+      [data-pretable-date-previous-month],
+      [data-pretable-date-next-month]
+    ) {
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: CanvasText;
+      border-color: CanvasText;
+      outline-color: CanvasText;
+    }
+    :where(
+      [data-pretable-number-increment]:disabled,
+      [data-pretable-number-decrement]:disabled,
+      [data-pretable-date-previous-month]:disabled,
+      [data-pretable-date-next-month]:disabled
+    ) {
+      color: GrayText;
+    }
+    :where([data-pretable-date-day]) {
+      box-shadow: none;
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: CanvasText;
+    }
+    :where([data-pretable-date-day][aria-selected="true"]) {
+      background-color: Highlight;
+      color: HighlightText;
+    }
+    :where([data-pretable-date-day][data-pretable-date-today]) {
+      text-decoration: underline;
+    }
+    :where([data-pretable-date-day][aria-disabled="true"]) {
+      background-color: Canvas;
+      color: GrayText;
+    }
+    :where([data-pretable-date-day][data-pretable-date-active]) {
+      outline: 2px solid currentColor;
+      outline-offset: -2px;
+    }
+    :where(.pretable-cell-editor) {
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: CanvasText;
+      outline-color: Highlight;
+    }
+    :where(.pretable-cell-editor[aria-invalid="true"]) {
+      outline: 2px dashed CanvasText;
     }
   }
 

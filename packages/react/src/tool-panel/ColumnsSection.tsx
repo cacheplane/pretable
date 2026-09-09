@@ -11,6 +11,7 @@ import {
 
 import { GROUP_COLUMN_ID } from "@pretable/core";
 
+import { useOverlayContainer } from "../overlay/portal-context";
 import { usePretableComponents } from "../components/context";
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { GripIcon, OverflowIcon } from "../icons";
@@ -120,6 +121,7 @@ export function ColumnsSection({
   messages,
 }: ColumnsSectionProps) {
   const { Button, IconButton, TextInput, Checkbox } = usePretableComponents();
+  const overlayReady = useOverlayContainer() !== null;
 
   // Live engine state, read through the section's OWN subscription — never a
   // snapshot baked into the descriptor closure. The read returns the state's
@@ -505,7 +507,7 @@ export function ColumnsSection({
                     <span data-pretable-tool-column-label="">{label}</span>
                     <IconButton
                       site="tool-row-menu-button"
-                      aria-expanded={openColumnId === entry.id}
+                      aria-expanded={openColumnId === entry.id && overlayReady}
                       aria-haspopup="menu"
                       aria-label={messages.toolPanelColumnMenuLabel({ label })}
                       data-pretable-tool-row-menu-button=""
@@ -513,13 +515,6 @@ export function ColumnsSection({
                         if (node) kebabNodesRef.current.set(entry.id, node);
                         else kebabNodesRef.current.delete(entry.id);
                       }}
-                      // Load-bearing, exactly as on the header MenuButton: React
-                      // delegates at the root container, so stopping here keeps
-                      // the pointerdown off `document` — where the open menu
-                      // listens for outside-clicks. Without it, pointerdown
-                      // would close the menu and the following click reopen it,
-                      // so the kebab could never dismiss its own menu.
-                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         toggleMenu("menu", entry.id, e.currentTarget);
                       }}
@@ -553,6 +548,7 @@ export function ColumnsSection({
         if (open === undefined) return null;
         return (
           <ColumnRowMenu
+            anchor={menu.anchor}
             autoWidth={autoWidthSet.has(open.entry.id)}
             columnId={open.entry.id}
             label={open.label}

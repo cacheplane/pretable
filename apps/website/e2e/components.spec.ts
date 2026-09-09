@@ -60,11 +60,15 @@ test("every button in the grid is the consumer's, including inside the portalled
   await expect(funnel).toHaveAttribute("data-fixture-icon", "filter-funnel");
   await funnel.click();
 
-  // The dialog is a child of <body>, and its Clear button is ours.
+  // The dialog escapes the grid into the body portal target, and its Clear button is ours.
   const dialog = page.locator("[data-pretable-filter-menu]");
   await expect(dialog).toBeVisible();
   expect(
-    await dialog.evaluate((el) => el.parentElement === document.body),
+    await dialog.evaluate(
+      (el) =>
+        el.closest("[data-pretable-overlay-root]")?.parentElement ===
+          document.body && !el.closest("[data-pretable-scroll-viewport]"),
+    ),
   ).toBe(true);
   await expect(dialog.locator("[data-pretable-filter-clear]")).toHaveAttribute(
     "data-fixture-button",
@@ -230,9 +234,13 @@ test("the kit's picker commits by keyboard, with typeahead, and Escape leaves fo
   await picker.focus();
   await page.keyboard.press("ArrowDown");
   await expect(list).toBeVisible();
-  expect(await list.evaluate((el) => el.parentElement === document.body)).toBe(
-    true,
-  );
+  expect(
+    await list.evaluate(
+      (el) =>
+        el.closest("[data-pretable-overlay-root]")?.parentElement ===
+          document.body && !el.closest("[data-pretable-scroll-viewport]"),
+    ),
+  ).toBe(true);
 
   // Typeahead by label prefix. The offered labels here are `Default (Sum)`,
   // `None`, `Sum`, `Average`, `Min`, `Max`, `Count`, so "a" is unambiguous —
@@ -255,6 +263,18 @@ test("the kit's picker commits by keyboard, with typeahead, and Escape leaves fo
   await expect(picker).toBeFocused();
   await expect(picker).toHaveAttribute("data-pretable-value", "avg");
   await expect(aggregateCell).toHaveText("Σ 123");
+
+  // A new popup session must not inherit the previous prefix. Unit tests pin
+  // the exact timer boundary; this checks the browser's close/open key flow.
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("m");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("c");
+  await page.keyboard.press("Enter");
+  await expect(picker).toHaveAttribute("data-pretable-value", "count");
+  await expect(list).toHaveCount(0);
+  await expect(picker).toBeFocused();
 });
 
 test("the funnel dialog survives a picked operator, and Escape unwinds one layer at a time", async ({

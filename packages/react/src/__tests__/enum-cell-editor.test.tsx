@@ -1,7 +1,9 @@
+import { enumChoice } from "../editors/enum-draft";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PretableOverlayProvider } from "../overlay/portal-context";
 import { CellEditor } from "../cell-editor";
 import type { PretableEditorInput } from "../types";
 
@@ -58,14 +60,14 @@ describe("EnumCellEditor (via dispatcher)", () => {
     expect(shown).toEqual(["Running"]);
   });
 
-  it("ArrowDown moves the highlight and Enter commits that option's label", () => {
+  it("ArrowDown moves the highlight and Enter commits that option's canonical identity", () => {
     const setDraft = vi.fn();
     const commit = vi.fn();
     render(<CellEditor input={makeInput({ setDraft, commit })} />);
     const box = screen.getByRole("combobox");
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter" });
-    expect(setDraft).toHaveBeenCalledWith("Running");
+    expect(setDraft).toHaveBeenCalledWith(enumChoice("running"));
     expect(commit).toHaveBeenCalledWith("down");
   });
 
@@ -87,7 +89,7 @@ describe("EnumCellEditor (via dispatcher)", () => {
     const commit = vi.fn();
     render(<CellEditor input={makeInput({ setDraft, commit })} />);
     fireEvent.click(screen.getByRole("option", { name: "Done" }));
-    expect(setDraft).toHaveBeenCalledWith("Done");
+    expect(setDraft).toHaveBeenCalledWith(enumChoice("done"));
     expect(commit).toHaveBeenCalledWith();
   });
 
@@ -97,13 +99,13 @@ describe("EnumCellEditor (via dispatcher)", () => {
     expect(notPrevented).toBe(false);
   });
 
-  it("blur cancels when the text matches no option", () => {
+  it("blur submits unmatched text to the parser for a recoverable error", () => {
     const commit = vi.fn();
     const cancel = vi.fn();
     render(<CellEditor input={makeInput({ draft: "zzz", commit, cancel })} />);
     fireEvent.blur(screen.getByRole("combobox"));
-    expect(cancel).toHaveBeenCalled();
-    expect(commit).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(commit).toHaveBeenCalledWith();
   });
 
   it("blur commits when the text matches an option", () => {
@@ -126,10 +128,11 @@ describe("EnumCellEditor (via dispatcher)", () => {
     expect(cancel).toHaveBeenCalled();
   });
 
-  it("re-seeds the field with the option's label when the draft holds the raw value", () => {
+  it("displays the option label without rewriting its canonical draft", () => {
     const setDraft = vi.fn();
     render(<CellEditor input={makeInput({ draft: "queued", setDraft })} />);
-    expect(setDraft).toHaveBeenCalledWith("Queued");
+    expect(setDraft).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox")).toHaveValue("Queued");
   });
 
   it("a type-to-replace seed filters the list immediately", () => {
@@ -142,7 +145,7 @@ describe("EnumCellEditor (via dispatcher)", () => {
     ]);
   });
 
-  it("a type-to-replace seed highlights the first visible option", () => {
+  it("a type-to-replace seed remains raw until explicitly navigated", () => {
     // The seeded highlight is an index into the *full* option list (here
     // "done" = 2), but the list starts filtered — so it must clamp to the
     // filtered list or a bare Enter would commit the raw seed text.
@@ -154,7 +157,7 @@ describe("EnumCellEditor (via dispatcher)", () => {
       />,
     );
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
-    expect(setDraft).toHaveBeenCalledWith("Running");
+    expect(setDraft).not.toHaveBeenCalled();
     expect(commit).toHaveBeenCalledWith("down");
   });
 
@@ -196,7 +199,7 @@ describe("EnumCellEditor (via dispatcher)", () => {
     const box = screen.getByRole("combobox");
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter" });
-    expect(setDraft).toHaveBeenCalledWith("Done");
+    expect(setDraft).toHaveBeenCalledWith(enumChoice("done"));
     expect(commit).toHaveBeenCalledWith("down");
   });
 
@@ -220,4 +223,39 @@ describe("EnumCellEditor (via dispatcher)", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
+});
+
+it("waits for its provider target before publishing popup ARIA references", () => {
+  const input = makeInput();
+  const target = document.createElement("div");
+  document.body.append(target);
+  const content = <CellEditor input={input} />;
+  const view = render(
+    <PretableOverlayProvider container={null}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  const field = view.getByRole("combobox");
+  expect(field).not.toHaveAttribute("aria-controls");
+  expect(field).not.toHaveAttribute("aria-activedescendant");
+  view.rerender(
+    <PretableOverlayProvider container={target}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  expect(
+    document.getElementById(field.getAttribute("aria-controls")!),
+  ).not.toBeNull();
+  expect(
+    document.getElementById(field.getAttribute("aria-activedescendant")!),
+  ).not.toBeNull();
+  view.rerender(
+    <PretableOverlayProvider container={null}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  expect(field).not.toHaveAttribute("aria-controls");
+  expect(field).not.toHaveAttribute("aria-activedescendant");
+  view.unmount();
+  target.remove();
 });

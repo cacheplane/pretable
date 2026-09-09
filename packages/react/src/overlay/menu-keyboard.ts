@@ -1,5 +1,7 @@
-import type { KeyboardEvent, RefObject } from "react";
-import { useEffect, useRef } from "react";
+import type { KeyboardEvent, RefCallback } from "react";
+import { useCallback, useRef } from "react";
+
+import { useOutsidePointer } from "./outside-pointer";
 
 /**
  * The shared `role="menu"` behavior for the tool panel's popovers — one home
@@ -19,12 +21,6 @@ import { useEffect, useRef } from "react";
  *   interlock, and a portal still bubbles through the React tree to it.
  * - ArrowUp/ArrowDown rove focus across the enabled items, wrapping.
  *
- * A TOGGLING anchor must `stopPropagation()` on its own pointerdown, or the
- * outside-press close and the toggle fight — the document listener closes
- * the menu first and the anchor's click reopens it, so the button could
- * never dismiss its own menu. Both current callers do this on the button;
- * this bullet is the contract's home.
- *
  * Items are discovered by the popover contract's own attribute
  * (`[data-pretable-menu-item]`), queried live so a menu whose items change
  * while open needs no bookkeeping. The header's `ColumnMenu` is deliberately
@@ -35,8 +31,11 @@ import { useEffect, useRef } from "react";
  * caller knows whether its anchor survives the close (the pin menu's kebab
  * can remount across subgroup fragments; the add-group button never moves).
  */
-export function useMenuKeyboard(onClose: (restoreFocus: boolean) => void): {
-  rootRef: RefObject<HTMLDivElement | null>;
+export function useMenuKeyboard(
+  onClose: (restoreFocus: boolean) => void,
+  anchor?: HTMLElement | null,
+): {
+  rootRef: RefCallback<HTMLDivElement>;
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 } {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -48,21 +47,16 @@ export function useMenuKeyboard(onClose: (restoreFocus: boolean) => void): {
       ) ?? [],
     );
 
-  // Mount-only on purpose: focus is taken when the menu OPENS, never again.
-  useEffect(() => {
-    enabledItems()[0]?.focus();
+  const attachRoot = useCallback((node: HTMLDivElement | null) => {
+    rootRef.current = node;
+    node
+      ?.querySelector<HTMLButtonElement>(
+        "[data-pretable-menu-item]:not(:disabled)",
+      )
+      ?.focus();
   }, []);
-
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      const root = rootRef.current;
-      if (root && e.target instanceof Node && !root.contains(e.target)) {
-        onClose(false);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [onClose]);
+  const closeFromOutside = useCallback(() => onClose(false), [onClose]);
+  useOutsidePointer(rootRef, closeFromOutside, anchor);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape" || event.key === "Esc") {
@@ -79,5 +73,5 @@ export function useMenuKeyboard(onClose: (restoreFocus: boolean) => void): {
     items[(index + delta + items.length) % items.length]?.focus();
   };
 
-  return { rootRef, onKeyDown };
+  return { rootRef: attachRoot, onKeyDown };
 }

@@ -43,6 +43,8 @@ export type {
 } from "./components/select";
 export { PretableTextInput } from "./components/text-input";
 export type { PretableTextInputProps } from "./components/text-input";
+export { PretableTextarea } from "./components/textarea";
+export type { PretableTextareaProps } from "./components/textarea";
 export { PretableCheckbox } from "./components/checkbox";
 export type { PretableCheckboxProps } from "./components/checkbox";
 export type {
@@ -52,6 +54,7 @@ export type {
   PretableIconButtonComponent,
   PretableSelectComponent,
   PretableTextInputComponent,
+  PretableTextareaComponent,
 } from "./components/context";
 
 // Hooks
@@ -326,3 +329,6 @@ export type {
   ɵPretableIndexedSelectionWindow,
   ɵPretableIndexedWindowing,
 } from "@pretable/core";
+
+export { PretableOverlayProvider } from "./overlay/portal-context";
+export type { PretableOverlayProviderProps } from "./overlay/portal-context";

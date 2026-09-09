@@ -9,6 +9,7 @@ import {
 
 import type { ColumnType } from "@pretable/core";
 
+import { useOverlayContainer } from "../../overlay/portal-context";
 import { usePretableComponents } from "../../components/context";
 import { CloseIcon, GripIcon } from "../../icons";
 import { menuPopoverStyle } from "../../overlay/popover-position";
@@ -149,6 +150,7 @@ export function GroupingSection({
   messages,
 }: GroupingSectionProps) {
   const { Button, IconButton, Select, Checkbox } = usePretableComponents();
+  const overlayReady = useOverlayContainer() !== null;
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
   // state (FiltersSection's pattern): `rowGroups` changes identity only when
   // a query commits, so every other publish bails in useSyncExternalStore's
@@ -441,16 +443,11 @@ export function GroupingSection({
         ) : null}
         <Button
           site="add-group"
-          aria-expanded={menu !== null}
+          aria-expanded={menu !== null && overlayReady}
           aria-haspopup="menu"
           data-pretable-add-group=""
           disabled={ungrouped.length === 0}
           ref={addButtonRef}
-          // Load-bearing, exactly as on the kebab: React delegates at the
-          // root container, so stopping here keeps the pointerdown off
-          // `document` — where the open menu listens for outside-clicks.
-          // Without it the button could never dismiss its own menu.
-          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             toggleMenu("menu", "add-group", event.currentTarget);
           }}
@@ -459,6 +456,7 @@ export function GroupingSection({
         </Button>
         {menu !== null && ungrouped.length > 0 ? (
           <AddGroupMenu
+            anchor={menu.anchor}
             messages={messages}
             options={ungrouped}
             style={menuPopoverStyle(menu.rect)}

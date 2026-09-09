@@ -44,6 +44,11 @@ export type PretableButtonVariant = "ghost" | "link";
  * @public
  */
 export type PretableBuiltInSite =
+  | "cell-editor"
+  | "number-increment"
+  | "number-decrement"
+  | "date-previous-month"
+  | "date-next-month"
   | "filter-add"
   | "add-group"
   | "expand-all"

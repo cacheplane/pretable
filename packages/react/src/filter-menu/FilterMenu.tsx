@@ -26,6 +26,7 @@ import {
   type FilterDraft,
 } from "./filter-operators";
 import { usePretableComponents } from "../components/context";
+import { useOutsidePointer } from "../overlay/outside-pointer";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 
 const DEBOUNCE_MS = 200;
@@ -52,6 +53,7 @@ type VisibleDistinctValueState =
   DistinctValueState | { readonly kind: "loading" };
 
 export function FilterMenu({
+  anchor,
   columnId,
   label,
   type,
@@ -63,6 +65,7 @@ export function FilterMenu({
   onChange,
   onClose,
 }: {
+  anchor?: HTMLElement | null;
   columnId: string;
   label: string;
   type: ColumnType;
@@ -82,7 +85,9 @@ export function FilterMenu({
     useState<DistinctValueState>({ kind: "idle" });
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const selectRef = useRef<HTMLButtonElement>(null);
+  const selectRef = useCallback((node: HTMLButtonElement | null) => {
+    node?.focus({ preventScroll: true });
+  }, []);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep the latest draft in a ref so the unmount flush sees current state.
@@ -142,37 +147,8 @@ export function FilterMenu({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Focus the operator select on mount.
-  //
-  // `preventScroll` no longer decides whether this popover survives its own
-  // mount — `useHeaderPopover` follows its anchor now instead of closing on
-  // any window scroll, so a scrolling `.focus()` would be repositioned rather
-  // than fatal. It stays because scrolling the page is not something opening a
-  // menu should do to the reader in the first place: the popover is drawn
-  // beside a header the user was already looking at, and yanking the document
-  // to reveal a control inside it moves everything else out from under them.
-  //
-  // Kept as the historical record of why it was added, because the shape is
-  // worth recognising again: opening the filter from the keyboard for the
-  // FIRST time on a page failed in both engines, 1 of 3 reps each, always the
-  // first — the only open with any scrolling left to do. Every later open was
-  // already in view and therefore silent. It read as flaky and was
-  // deterministic.
-  useEffect(() => {
-    selectRef.current?.focus({ preventScroll: true });
-  }, []);
-
-  // Outside-click → close.
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      const root = rootRef.current;
-      if (root && e.target instanceof Node && !root.contains(e.target)) {
-        onClose();
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [onClose]);
+  // Focus belongs to actual DOM attachment, including delayed portal targets.
+  useOutsidePointer(rootRef, onClose, anchor);
 
   const onOperatorChange = useCallback(
     (operator: FilterOperator) => {

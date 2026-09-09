@@ -1,0 +1,50 @@
+[
+  {
+    "tag": "INPUT",
+    "label": "Quantity",
+    "rect": {
+      "x": 504,
+      "y": 535.421875,
+      "width": 74.640625,
+      "height": 28.203125,
+      "top": 535.421875,
+      "right": 578.640625,
+      "bottom": 563.625,
+      "left": 504
+    },
+    "outline": "rgb(192, 39, 28) solid 2px",
+    "padding": "2px 16px"
+  },
+  {
+    "tag": "BUTTON",
+    "label": "Increment",
+    "rect": {
+      "x": 578.640625,
+      "y": 537.515625,
+      "width": 14.359375,
+      "height": 12,
+      "top": 537.515625,
+      "right": 593,
+      "bottom": 549.515625,
+      "left": 578.640625
+    },
+    "outline": "rgb(94, 94, 106) none 3px",
+    "padding": "2px 4px"
+  },
+  {
+    "tag": "BUTTON",
+    "label": "Decrement",
+    "rect": {
+      "x": 578.640625,
+      "y": 549.515625,
+      "width": 14.359375,
+      "height": 12,
+      "top": 549.515625,
+      "right": 593,
+      "bottom": 561.515625,
+      "left": 578.640625
+    },
+    "outline": "rgb(94, 94, 106) none 3px",
+    "padding": "2px 4px"
+  }
+]

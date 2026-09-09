@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 
+import { editorCommitDirection, useCompositionGuard } from "./editor-keyboard";
 import type { PretableEditorInput } from "../types";
 
 const PENDING_STATUSES: ReadonlySet<string> = new Set([
@@ -17,31 +18,38 @@ const PENDING_STATUSES: ReadonlySet<string> = new Set([
 export function useEditorField<
   E extends HTMLInputElement | HTMLTextAreaElement,
 >(input: PretableEditorInput) {
-  const ref = useRef<E>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    if (input.seededFromTyping) {
-      // The draft IS the character the user just typed: collapse the caret
-      // after it so the next keystroke appends rather than replacing.
-      const end = el.value.length;
-      el.setSelectionRange(end, end);
-    } else {
-      el.select();
-    }
-    // Mount-only: the entry path can't change for the life of one edit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const ref = useRef<E | null>(null);
+  const composition = useCompositionGuard();
+  const seededFromTyping = input.seededFromTyping;
+  const attachRef = useCallback(
+    (el: E | null) => {
+      ref.current = el;
+      if (!el) return;
+      // Focus each actual field attachment, including a changed replacement slot.
+      // Ordinary draft/status renders retain this callback and leave the caret alone.
+      el.focus();
+      if (seededFromTyping) {
+        const end = el.value.length;
+        el.setSelectionRange(end, end);
+      } else {
+        el.select();
+      }
+    },
+    [seededFromTyping],
+  );
 
   const pending = PENDING_STATUSES.has(input.status);
   const errorId = `pretable-edit-error-${input.rowId}-${input.columnId}`;
 
   return {
     ref,
+    attachRef,
     pending,
     errorId,
+    isComposing: composition.isComposing,
     fieldProps: {
+      onCompositionStart: composition.onCompositionStart,
+      onCompositionEnd: composition.onCompositionEnd,
       "aria-label": input.column.header ?? input.columnId,
       "aria-invalid": input.error ? true : undefined,
       "aria-errormessage": input.error ? errorId : undefined,
@@ -53,14 +61,15 @@ export function useEditorField<
         if (input.status === "editing") input.commit();
       },
       onKeyDown: (e: React.KeyboardEvent) => {
+        if (composition.isComposing(e)) return;
         if (e.key === "Enter") {
           e.preventDefault();
           e.stopPropagation();
-          input.commit("down");
+          if (!pending) input.commit(editorCommitDirection(e));
         } else if (e.key === "Tab") {
           e.preventDefault();
           e.stopPropagation();
-          input.commit("right");
+          if (!pending) input.commit(editorCommitDirection(e));
         } else if (e.key === "Escape" || e.key === "Esc") {
           e.preventDefault();
           e.stopPropagation();

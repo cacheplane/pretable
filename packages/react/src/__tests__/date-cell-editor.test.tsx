@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PretableOverlayProvider } from "../overlay/portal-context";
 import { CellEditor } from "../cell-editor";
 import type { PretableEditorInput } from "../types";
 
@@ -26,7 +27,7 @@ function makeInput(
 }
 
 const activeDay = () =>
-  screen.getByRole("textbox").getAttribute("aria-activedescendant");
+  screen.getByRole("combobox").getAttribute("aria-activedescendant");
 const dayCell = (iso: string) =>
   screen.getByRole("gridcell", { name: new RegExp(`^${iso}$`) });
 
@@ -38,20 +39,20 @@ describe("DateCellEditor (via dispatcher)", () => {
     expect(dayCell("2026-08-06")).toHaveAttribute("aria-selected", "true");
   });
 
-  it("ArrowRight moves the active day by one, ArrowDown by a week", () => {
+  it("ArrowDown enters navigation and moves a week; ArrowRight then moves one day", () => {
     render(<CellEditor input={makeInput()} />);
-    const box = screen.getByRole("textbox");
+    const box = screen.getByRole("combobox");
     const start = activeDay();
-    fireEvent.keyDown(box, { key: "ArrowRight" });
-    expect(activeDay()).not.toBe(start);
-    expect(activeDay()).toBe(dayCell("2026-08-07").id);
     fireEvent.keyDown(box, { key: "ArrowDown" });
+    expect(activeDay()).not.toBe(start);
+    expect(activeDay()).toBe(dayCell("2026-08-13").id);
+    fireEvent.keyDown(box, { key: "ArrowRight" });
     expect(activeDay()).toBe(dayCell("2026-08-14").id);
   });
 
   it("PageDown moves to the next month", () => {
     render(<CellEditor input={makeInput()} />);
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "PageDown" });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "PageDown" });
     expect(screen.getByText("September 2026")).toBeInTheDocument();
   });
 
@@ -59,10 +60,10 @@ describe("DateCellEditor (via dispatcher)", () => {
     const setDraft = vi.fn();
     const commit = vi.fn();
     render(<CellEditor input={makeInput({ setDraft, commit })} />);
-    const box = screen.getByRole("textbox");
-    fireEvent.keyDown(box, { key: "ArrowRight" });
+    const box = screen.getByRole("combobox");
+    fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter" });
-    expect(setDraft).toHaveBeenCalledWith("2026-08-07");
+    expect(setDraft).toHaveBeenCalledWith("2026-08-13");
     expect(commit).toHaveBeenCalledWith("down");
   });
 
@@ -77,7 +78,7 @@ describe("DateCellEditor (via dispatcher)", () => {
 
   it("typing a valid ISO date retargets the calendar", () => {
     render(<CellEditor input={makeInput()} />);
-    fireEvent.change(screen.getByRole("textbox"), {
+    fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "2026-12-25" },
     });
     expect(screen.getByText("December 2026")).toBeInTheDocument();
@@ -90,7 +91,7 @@ describe("DateCellEditor (via dispatcher)", () => {
     render(
       <CellEditor input={makeInput({ draft: "nope", setDraft, commit })} />,
     );
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
     // The calendar's day is NOT substituted for what the user typed.
     expect(setDraft).not.toHaveBeenCalled();
     expect(commit).toHaveBeenCalledWith("down");
@@ -100,7 +101,7 @@ describe("DateCellEditor (via dispatcher)", () => {
     const setDraft = vi.fn();
     const commit = vi.fn();
     render(<CellEditor input={makeInput({ draft: "", setDraft, commit })} />);
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
     // No substitution: the empty draft reaches parseDraftForType, which maps
     // it to null.
     expect(setDraft).not.toHaveBeenCalled();
@@ -111,7 +112,7 @@ describe("DateCellEditor (via dispatcher)", () => {
     const setDraft = vi.fn();
     render(<CellEditor input={makeInput({ draft: "2", setDraft })} />);
     expect(setDraft).not.toHaveBeenCalled();
-    expect(screen.getByRole("textbox")).toHaveValue("2");
+    expect(screen.getByRole("combobox")).toHaveValue("2");
   });
 
   it("keeps aria-activedescendant resolvable when PageDown clamps the day", () => {
@@ -120,7 +121,7 @@ describe("DateCellEditor (via dispatcher)", () => {
         input={makeInput({ draft: "2026-08-31", value: "2026-08-31" })}
       />,
     );
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "PageDown" });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "PageDown" });
     // September has 30 days, so the cursor clamps — and the clamped day is
     // still a rendered cell, so the id always resolves.
     expect(activeDay()).toBe(dayCell("2026-09-30").id);
@@ -130,7 +131,7 @@ describe("DateCellEditor (via dispatcher)", () => {
   it("ignores calendar navigation while an edit is in flight", () => {
     const setDraft = vi.fn();
     render(<CellEditor input={makeInput({ status: "saving", setDraft })} />);
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowRight" });
     fireEvent.click(screen.getByRole("button", { name: "Next month" }));
     expect(setDraft).not.toHaveBeenCalled();
     expect(screen.getByText("August 2026")).toBeInTheDocument();
@@ -146,7 +147,7 @@ describe("DateCellEditor (via dispatcher)", () => {
     const commit = vi.fn();
     const cancel = vi.fn();
     render(<CellEditor input={makeInput({ commit, cancel })} />);
-    fireEvent.blur(screen.getByRole("textbox"));
+    fireEvent.blur(screen.getByRole("combobox"));
     expect(commit).toHaveBeenCalledWith();
     cleanup();
 
@@ -157,7 +158,7 @@ describe("DateCellEditor (via dispatcher)", () => {
         input={makeInput({ draft: "nope", commit: commit2, cancel: cancel2 })}
       />,
     );
-    fireEvent.blur(screen.getByRole("textbox"));
+    fireEvent.blur(screen.getByRole("combobox"));
     expect(cancel2).toHaveBeenCalled();
     expect(commit2).not.toHaveBeenCalled();
   });
@@ -170,7 +171,7 @@ describe("DateCellEditor (via dispatcher)", () => {
         input={makeInput({ draft: null, value: null, commit, cancel })}
       />,
     );
-    fireEvent.blur(screen.getByRole("textbox"));
+    fireEvent.blur(screen.getByRole("combobox"));
     expect(commit).toHaveBeenCalledWith();
     expect(cancel).not.toHaveBeenCalled();
     cleanup();
@@ -187,7 +188,7 @@ describe("DateCellEditor (via dispatcher)", () => {
         })}
       />,
     );
-    fireEvent.blur(screen.getByRole("textbox"));
+    fireEvent.blur(screen.getByRole("combobox"));
     expect(emptyCancel).toHaveBeenCalledWith();
     expect(emptyCommit).not.toHaveBeenCalled();
   });
@@ -211,9 +212,9 @@ describe("DateCellEditor (via dispatcher)", () => {
           input={makeInput({ draft, value: draft, setDraft, commit, cancel })}
         />,
       );
-      expect(screen.getByRole("textbox")).toHaveValue(String(draft ?? ""));
+      expect(screen.getByRole("combobox")).toHaveValue(String(draft ?? ""));
       expect(setDraft).not.toHaveBeenCalled();
-      fireEvent.blur(screen.getByRole("textbox"));
+      fireEvent.blur(screen.getByRole("combobox"));
       expect(cancel).toHaveBeenCalledWith();
       expect(commit).not.toHaveBeenCalled();
     },
@@ -236,15 +237,15 @@ describe("DateCellEditor (via dispatcher)", () => {
       cancel,
     });
     const view = render(<CellEditor input={input} />);
-    fireEvent.blur(screen.getByRole("textbox"));
+    fireEvent.blur(screen.getByRole("combobox"));
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(commit).not.toHaveBeenCalled();
 
     view.rerender(<CellEditor input={input} />);
-    fireEvent.change(screen.getByRole("textbox"), {
+    fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "legacy changed" },
     });
-    fireEvent.blur(screen.getByRole("textbox"));
+    fireEvent.blur(screen.getByRole("combobox"));
     expect(commit).toHaveBeenCalledWith();
   });
 
@@ -268,7 +269,7 @@ describe("DateCellEditor (via dispatcher)", () => {
       />,
     );
 
-    fireEvent.blur(screen.getByRole("textbox"));
+    fireEvent.blur(screen.getByRole("combobox"));
 
     expect(commit).toHaveBeenCalledWith();
     expect(cancel).not.toHaveBeenCalled();
@@ -288,7 +289,7 @@ describe("DateCellEditor (via dispatcher)", () => {
       />,
     );
 
-    fireEvent.blur(screen.getByRole("textbox"));
+    fireEvent.blur(screen.getByRole("combobox"));
 
     expect(cancel).toHaveBeenCalledWith();
     expect(commit).not.toHaveBeenCalled();
@@ -302,7 +303,7 @@ describe("DateCellEditor (via dispatcher)", () => {
         input={{ ...input, draft: "9999-12-31", value: "9999-12-31" }}
       />,
     );
-    expect(screen.getByRole("textbox")).toHaveValue("9999-12-31");
+    expect(screen.getByRole("combobox")).toHaveValue("9999-12-31");
     expect(screen.getByText("December 9999")).toBeInTheDocument();
     expect(dayCell("9999-12-31")).toHaveAttribute("aria-selected", "true");
     expect(activeDay()).toBe(dayCell("9999-12-31").id);
@@ -317,19 +318,19 @@ describe("DateCellEditor (via dispatcher)", () => {
     view.rerender(<CellEditor input={{ ...input, draft: "not-a-date" }} />);
     expect(screen.getByText("August 2026")).toBeInTheDocument();
     expect(dayCell("2026-08-06")).not.toHaveAttribute("aria-selected", "true");
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
     expect(setDraft).not.toHaveBeenCalled();
     expect(commit).toHaveBeenCalledWith("down");
   });
 
-  it("marks arrow and page navigation as modified so blur commits it", () => {
+  it("browses without writing and blur commits the unchanged draft", () => {
     const setDraft = vi.fn();
     const commit = vi.fn();
     render(<CellEditor input={makeInput({ setDraft, commit })} />);
-    const box = screen.getByRole("textbox");
+    const box = screen.getByRole("combobox");
     fireEvent.keyDown(box, { key: "ArrowRight" });
     fireEvent.blur(box);
-    expect(setDraft).toHaveBeenLastCalledWith("2026-08-07");
+    expect(setDraft).not.toHaveBeenCalled();
     expect(commit).toHaveBeenCalledWith();
   });
 
@@ -344,7 +345,7 @@ describe("DateCellEditor (via dispatcher)", () => {
         })}
       />,
     );
-    const minBox = screen.getByRole("textbox");
+    const minBox = screen.getByRole("combobox");
     expect(
       screen.getByRole("button", { name: "Previous month" }),
     ).toBeDisabled();
@@ -369,7 +370,7 @@ describe("DateCellEditor (via dispatcher)", () => {
         })}
       />,
     );
-    const maxBox = screen.getByRole("textbox");
+    const maxBox = screen.getByRole("combobox");
     expect(screen.getByRole("button", { name: "Next month" })).toBeDisabled();
     fireEvent.keyDown(maxBox, { key: "ArrowRight" });
     fireEvent.keyDown(maxBox, { key: "PageDown" });
@@ -381,7 +382,7 @@ describe("DateCellEditor (via dispatcher)", () => {
     const commit = vi.fn();
     const cancel = vi.fn();
     render(<CellEditor input={makeInput({ commit, cancel })} />);
-    const box = screen.getByRole("textbox");
+    const box = screen.getByRole("combobox");
     fireEvent.keyDown(box, { key: "Tab" });
     expect(commit).toHaveBeenCalledWith("right");
     fireEvent.keyDown(box, { key: "Escape" });
@@ -400,8 +401,43 @@ describe("DateCellEditor (via dispatcher)", () => {
       />,
     );
     expect(setDraft).not.toHaveBeenCalled();
-    expect(screen.getByRole("textbox")).toHaveValue(
+    expect(screen.getByRole("combobox")).toHaveValue(
       String(new Date(Date.UTC(2026, 7, 6))),
     );
   });
+});
+
+it("waits for its provider target before publishing popup ARIA references", () => {
+  const input = makeInput();
+  const target = document.createElement("div");
+  document.body.append(target);
+  const content = <CellEditor input={input} />;
+  const view = render(
+    <PretableOverlayProvider container={null}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  const field = view.getByRole("combobox");
+  expect(field).not.toHaveAttribute("aria-controls");
+  expect(field).not.toHaveAttribute("aria-activedescendant");
+  view.rerender(
+    <PretableOverlayProvider container={target}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  expect(
+    document.getElementById(field.getAttribute("aria-controls")!),
+  ).not.toBeNull();
+  expect(
+    document.getElementById(field.getAttribute("aria-activedescendant")!),
+  ).not.toBeNull();
+  view.rerender(
+    <PretableOverlayProvider container={null}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  expect(field).not.toHaveAttribute("aria-controls");
+  expect(field).not.toHaveAttribute("aria-activedescendant");
+  view.unmount();
+  target.remove();
 });

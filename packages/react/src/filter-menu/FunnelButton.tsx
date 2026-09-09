@@ -1,5 +1,6 @@
 // packages/react/src/filter-menu/FunnelButton.tsx
 import { createElement, type CSSProperties } from "react";
+import { useOverlayContainer } from "../overlay/portal-context";
 import { usePretableComponents } from "../components/context";
 import { FunnelIcon } from "../icons";
 
@@ -19,6 +20,7 @@ export function FunnelButton({
   onToggle: (columnId: string, anchor: HTMLElement) => void;
 }) {
   const { IconButton } = usePretableComponents();
+  const overlayReady = useOverlayContainer() !== null;
 
   return (
     <IconButton
@@ -27,7 +29,7 @@ export function FunnelButton({
       data-pretable-column-id={columnId}
       data-pretable-filter-active={active ? "true" : "false"}
       aria-haspopup="dialog"
-      aria-expanded={open}
+      aria-expanded={open && overlayReady}
       aria-label={`Filter ${label}`}
       style={style}
       // Out of the sequential tab order, exactly like the row-select checkbox
@@ -38,13 +40,6 @@ export function FunnelButton({
       // one — and zero in Safari, which keeps bare <button>s out of the
       // sequential order. Neither number was the contract.
       tabIndex={-1}
-      // Load-bearing: React delegates at the root container, so stopping here
-      // also keeps the pointerdown off `document` — where the open FilterMenu
-      // listens for outside-clicks. Without it, pointerdown would close the
-      // menu and the following click would reopen it, so the menu could never
-      // be dismissed by clicking its own funnel. Covered by
-      // "closes on a real pointerdown+click on the open funnel".
-      onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
         onToggle(columnId, e.currentTarget);

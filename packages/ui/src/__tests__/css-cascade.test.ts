@@ -550,7 +550,7 @@ describe("grid.css cascade contract", () => {
       /background:\s*var\(--pretable-bg-selected\)/,
     );
     const activeOption = rulesSelecting(css, (s) =>
-      s.includes("data-pretable-option][data-active]"),
+      s.includes("data-pretable-option][data-pretable-active]"),
     )
       .map((m) => m[2])
       .join("");
@@ -564,6 +564,84 @@ describe("grid.css cascade contract", () => {
         .map((m) => m[2])
         .join(""),
     ).toMatch(/background-color:\s*Highlight/);
+  });
+
+  test("disabled options keep disabled ink after selection and never hover", () => {
+    const css = strippedCss();
+    const plain = css.replace(forcedColorsBlock(css), "");
+    const selected = plain.indexOf(
+      '[data-pretable-option][aria-selected="true"]',
+    );
+    const disabled = rulesSelecting(
+      plain,
+      (s) =>
+        s.includes('[data-pretable-option][aria-disabled="true"]') &&
+        !s.includes(":not("),
+    );
+    expect(disabled.length).toBeGreaterThan(0);
+    expect(disabled[0]?.index).toBeGreaterThan(selected);
+    expect(disabled.map((m) => m[2]).join("")).toMatch(
+      /color:\s*var\(--pretable-text-dim\)/,
+    );
+    expect(disabled.map((m) => m[2]).join("")).toMatch(/cursor:\s*default/);
+    for (const [, selector] of rulesSelecting(
+      plain,
+      (s) => s.includes("data-pretable-option]") && s.includes(":hover"),
+    ))
+      expect(selector).toContain(':not([aria-disabled="true"])');
+  });
+
+  test("forced-color option focus survives independently of selected and disabled states", () => {
+    const css = strippedCss();
+    expect(css).not.toContain("[data-active]");
+    const forced = forcedColorsBlock(css);
+    const active = rulesSelecting(forced, (s) =>
+      s.includes("[data-pretable-option][data-pretable-active]"),
+    );
+    expect(active.map((m) => m[2]).join("")).toMatch(
+      /outline:\s*2px solid (?:CanvasText|currentColor)/,
+    );
+    const disabled = rulesSelecting(forced, (s) =>
+      s.includes('[data-pretable-option][aria-disabled="true"]'),
+    );
+    expect(disabled[0]?.index).toBeGreaterThan(
+      forced.indexOf('[data-pretable-option][aria-selected="true"]'),
+    );
+    const body = disabled.map((m) => m[2]).join("");
+    expect(body).toMatch(/color:\s*GrayText/);
+    expect(body).toMatch(/background-color:\s*Canvas/);
+    expect(body).toMatch(/border-color:\s*GrayText/);
+  });
+
+  test("disabled checkbox glyphs have their own contrasting fill and system states win last", () => {
+    const css = strippedCss();
+    const plain = css.replace(forcedColorsBlock(css), "");
+    const disabled = rulesSelecting(plain, (s) =>
+      s.includes("[data-pretable-checkbox]:disabled"),
+    );
+    const body = disabled.map((m) => m[2]).join("");
+    expect(body).toMatch(/background:\s*var\(--pretable-bg-grid\)/);
+    expect(body).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+    expect(body).toMatch(/border-style:\s*dashed/);
+    const forced = forcedColorsBlock(css);
+    const checked = rulesSelecting(forced, (s) =>
+      s.includes('[data-pretable-checkbox][aria-checked="true"]'),
+    );
+    expect(checked.map((m) => m[2]).join("")).toMatch(
+      /border-color:\s*Highlight/,
+    );
+    expect(checked.map((m) => m[2]).join("")).toMatch(
+      /outline-color:\s*CanvasText/,
+    );
+    const off = rulesSelecting(forced, (s) =>
+      s.includes("[data-pretable-checkbox]:disabled"),
+    );
+    const last = off.at(-1);
+    expect(last?.index).toBeGreaterThan(checked[0]?.index ?? Infinity);
+    expect(last?.[2]).toMatch(/background-color:\s*Canvas/);
+    expect(last?.[2]).toMatch(/color:\s*GrayText/);
+    expect(last?.[2]).toMatch(/border-color:\s*GrayText/);
+    expect(last?.[2]).toMatch(/outline-color:\s*GrayText/);
   });
 
   test("the kit text input carries the field box", () => {
@@ -674,14 +752,8 @@ describe("grid.css cascade contract", () => {
     expect(state).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
     expect(state).toMatch(/cursor:\s*default/);
 
-    // …and the disabled rule declares NO colour. `color` on a checkbox is the
-    // CHECK GLYPH, not label ink: the kit's --pretable-text-dim lands on the
-    // checked fill at about 1.9:1, and a read-only boolean column renders its
-    // control disabled on every row, so a dimmed tick is the whole column's
-    // ticks. The checkbox's disabled look is its own tokens; only the pointer
-    // belongs here. Scoped to the plain cascade — the forced-colours block
-    // below does set GrayText on it, and is answered there by the checked
-    // rules that follow it in source order.
+    // Disabled ink must bring its neutral surface with it, never dim the
+    // glyph while leaving it on the checked accent fill.
     const plain = css.replace(forcedColorsBlock(css), "");
     const off = rulesSelecting(plain, (s) =>
       s.includes("data-pretable-checkbox]:disabled"),
@@ -690,8 +762,8 @@ describe("grid.css cascade contract", () => {
     for (const [, selector, decls] of off)
       expect(
         decls,
-        `"${selector.trim()}" dims the check glyph on the checked fill`,
-      ).not.toMatch(/(^|[;{\s])color\s*:/);
+        `"${selector.trim()}" omits the disabled glyph’s contrasting surface`,
+      ).toMatch(/background:\s*var\(--pretable-bg-grid\)/);
 
     // Forced colours erase the fill AND the glyph's colour, which between
     // them are the whole of what a checkbox says — the committed option's
@@ -2795,4 +2867,124 @@ describe("grid.css cascade contract", () => {
       );
     }
   });
+});
+
+describe("editor kit migration state precedence", () => {
+  test("an inline validation message cannot squeeze the field into a horizontal sliver", () => {
+    const css = strippedCss();
+    expect(
+      rulesSelecting(css, (s) =>
+        s.includes("[data-pretable-cell][data-pretable-edit-status]"),
+      )
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/flex-direction:\s*column/);
+  });
+  test("focused invalid input and textarea retain the error outline", () => {
+    const css = strippedCss();
+    const plain = css.replace(forcedColorsBlock(css), "");
+    const focus = plain.lastIndexOf("[data-pretable-text-input]:focus-visible");
+    const invalid = plain.lastIndexOf(
+      '.pretable-cell-editor[aria-invalid="true"]',
+    );
+    expect(invalid).toBeGreaterThan(focus);
+    expect(plain).toContain("[data-pretable-textarea]:focus-visible");
+  });
+  test("textarea has a native field box and editor geometry resets its radius", () => {
+    const css = strippedCss();
+    expect(
+      rulesSelecting(
+        css,
+        (s) => s.trim() === ":where([data-pretable-textarea])",
+      )
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/box-sizing:\s*border-box/);
+    expect(
+      rulesSelecting(css, (s) => s.trim() === ":where(.pretable-cell-editor)")
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/border-radius:\s*0/);
+  });
+  test("calendar cursor and disabled states survive forced colors independently of selection", () => {
+    const css = strippedCss();
+    const forced = forcedColorsBlock(css);
+    expect(
+      rulesSelecting(forced, (s) => s.includes("[data-pretable-date-active]"))
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/outline:\s*2px solid/);
+    expect(
+      rulesSelecting(forced, (s) =>
+        s.includes('[data-pretable-date-day][aria-disabled="true"]'),
+      )
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/color:\s*GrayText/);
+    expect(
+      rulesSelecting(
+        css,
+        (s) =>
+          s.includes("[data-pretable-date-day]:hover") &&
+          !s.includes(':not([aria-disabled="true"])'),
+      ),
+    ).toHaveLength(0);
+  });
+  test("number action hover excludes disabled kit controls", () => {
+    const css = strippedCss();
+    expect(
+      rulesSelecting(
+        css,
+        (s) =>
+          s.includes("data-pretable-number-steppers") &&
+          s.includes(":hover") &&
+          !s.includes(":not(:disabled)"),
+      ),
+    ).toHaveLength(0);
+  });
+});
+
+test("editor state rules preserve boolean placement and system-painted action controls", () => {
+  const css = strippedCss();
+  const plain = css.replace(forcedColorsBlock(css), "");
+  const layout = rulesSelecting(
+    css,
+    (s) =>
+      s.includes("[data-pretable-cell][data-pretable-edit-status]") &&
+      !s.includes(" > "),
+  );
+  expect(
+    layout.every((r) => r[1].includes(":has(.pretable-cell-editor)")),
+  ).toBe(true);
+  expect(
+    rulesSelecting(plain, (s) =>
+      s.includes("[data-pretable-textarea]:disabled"),
+    )
+      .map((r) => r[2])
+      .join(""),
+  ).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+  const forced = forcedColorsBlock(css);
+  expect(
+    rulesSelecting(forced, (s) =>
+      s.includes("[data-pretable-number-increment]"),
+    )
+      .map((r) => r[2])
+      .join(""),
+  ).toMatch(/background-color:\s*Canvas/);
+  expect(
+    rulesSelecting(
+      forced,
+      (s) => s.trim() === ":where([data-pretable-date-day])",
+    )
+      .map((r) => r[2])
+      .join(""),
+  ).toMatch(/box-shadow:\s*none/);
+  expect(
+    rulesSelecting(
+      css,
+      (s) => s.trim() === ":where([data-pretable-edit-error])",
+    )
+      .map((r) => r[2])
+      .join(""),
+  ).toMatch(/white-space:\s*nowrap/);
 });

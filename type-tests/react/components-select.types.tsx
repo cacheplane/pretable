@@ -128,3 +128,20 @@ const components: PretableComponents = { Select: PretableSelect };
 void components;
 const slot: PretableSelectComponent = PretableSelect;
 void slot;
+
+const textOptions: readonly PretableSelectOption[] = [
+  { value: "number", label: 42 },
+  { value: "override", label: "Displayed", textValue: "Searchable" },
+  { value: "rich", label: <span>Rich</span>, textValue: "Rich" },
+  { value: "empty", label: null, textValue: "Empty" },
+];
+void textOptions;
+// @ts-expect-error — rich labels require explicit typeahead text
+const missingRichText: PretableSelectOption = {
+  value: "rich",
+  label: <span>Rich</span>,
+};
+// @ts-expect-error — non-primitive labels also require explicit text
+const missingEmptyText: PretableSelectOption = { value: "empty", label: null };
+void missingRichText;
+void missingEmptyText;

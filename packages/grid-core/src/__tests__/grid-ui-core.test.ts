@@ -348,6 +348,62 @@ describe("UI-only grid core", () => {
     ).toThrowError(expect.objectContaining({ code: "disposed-grid-ui" }));
   });
 
+  describe.each(["checking", "validating", "saving"] as const)(
+    "draft writes during %s",
+    (status) => {
+      test.each([42, 99])(
+        "preserves the entire editing state for draft %s",
+        (value) => {
+          const { grid } = make();
+          grid.observeRowModelRevision(0);
+          grid.beginEdit({
+            rowId: 1,
+            columnId: "quantity",
+            value: 42,
+            status: status === "checking" ? "checking" : "editing",
+          });
+          if (status !== "checking")
+            grid.setEditStatus(status, "Existing error");
+          const before = grid.getState();
+          const listener = vi.fn();
+          grid.subscribe(listener);
+
+          grid.setEditDraft(value);
+
+          expect(grid.getState().editing).toEqual({
+            rowId: 1,
+            columnId: "quantity",
+            value: 42,
+            status,
+            error: status === "checking" ? undefined : "Existing error",
+          });
+          expect(grid.getState()).toBe(before);
+          expect(listener).not.toHaveBeenCalled();
+        },
+      );
+    },
+  );
+
+  test.each(["editing", "error"] as const)(
+    "accepts a changed draft and clears the error during %s",
+    (status) => {
+      const { grid } = make();
+      grid.observeRowModelRevision(0);
+      grid.beginEdit({ rowId: 1, columnId: "quantity", value: 42 });
+      grid.setEditStatus(status, "Existing error");
+
+      grid.setEditDraft(99);
+
+      expect(grid.getState().editing).toEqual({
+        rowId: 1,
+        columnId: "quantity",
+        value: 99,
+        status: "editing",
+        error: undefined,
+      });
+    },
+  );
+
   test("keeps row, row-ID, and column correlations through editing", () => {
     const { grid } = make();
     grid.observeRowModelRevision(0);

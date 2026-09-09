@@ -58,7 +58,9 @@ describe("Listbox", () => {
       />,
     );
     const list = document.querySelector("[data-pretable-listbox]")!;
-    expect(list.parentElement).toBe(document.body);
+    expect(list.closest("[data-pretable-overlay-root]")?.parentElement).toBe(
+      document.body,
+    );
     expect(list).toHaveAttribute("role", "listbox");
     expect(list).toHaveAttribute("id", "lb");
     // The MENU placement, not the dialog's: `position: fixed` alone is true
@@ -77,6 +79,9 @@ describe("Listbox", () => {
     expect(options[0]).toHaveAttribute("id", "lb-0"); // the format itself
     expect(options[3]).toHaveAttribute("id", listboxOptionId("lb", 3));
     expect(options[0]).toHaveAttribute("role", "option");
+    expect(options[0]).toHaveAttribute("data-pretable-active", "");
+    expect(options[1]).not.toHaveAttribute("data-pretable-active");
+    expect(list.querySelector("[data-active]")).toBeNull();
     expect(options[0]).toHaveAttribute(
       "data-pretable-option-value",
       "contains",
@@ -176,10 +181,8 @@ describe("Listbox", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test("a press inside the list does not reach a host popover's outside-press listener", () => {
-    // The list is portalled to body: unstopped, a press on an option would
-    // read as OUTSIDE to the dialog or menu the select sits in, dismissing
-    // the host under the pointer.
+  test("a press inside the list remains observable by document listeners", () => {
+    // Logical containment, rather than stopped bubbling, owns dismissal.
     const hostListener = vi.fn();
     document.addEventListener("pointerdown", hostListener);
     try {
@@ -195,10 +198,9 @@ describe("Listbox", () => {
         />,
       );
       fireEvent.pointerDown(document.querySelector("[data-pretable-option]")!);
-      expect(hostListener).not.toHaveBeenCalled();
-      // The positive twin: a real outside press still reaches the host.
-      fireEvent.pointerDown(document.body);
       expect(hostListener).toHaveBeenCalledTimes(1);
+      fireEvent.pointerDown(document.body);
+      expect(hostListener).toHaveBeenCalledTimes(2);
     } finally {
       document.removeEventListener("pointerdown", hostListener);
     }
@@ -396,6 +398,69 @@ describe("useListboxKeys", () => {
     expect(hook.result.current.activeIndex).toBe(3);
     hook.rerender({ open: false });
     hook.rerender({ open: true });
+    expect(hook.result.current.activeIndex).toBe(1);
+  });
+
+  test("an index reset in the same batch as filtering resolves against the new roster", () => {
+    const hook = renderHook(
+      ({ options }) =>
+        useListboxKeys({
+          options,
+          open: true,
+          initialIndex: 1,
+          onOpen: () => {},
+          onCommit: () => {},
+          onClose: () => {},
+        }),
+      { initialProps: { options: OPTIONS } },
+    );
+    act(() => {
+      hook.result.current.setActiveIndex(0);
+      hook.rerender({ options: [OPTIONS[3]!, OPTIONS[0]!] });
+    });
+    expect(hook.result.current.activeIndex).toBe(0);
+  });
+
+  test("missing rich-label text from JavaScript is safe and does not match", () => {
+    const options = [
+      { value: "a", label: "Alpha" },
+      { value: "b", label: <span>Beta</span> },
+    ] as readonly ListboxOption[];
+    const { hook } = setup(true, 0, options);
+    act(() => hook.result.current.onKeyDown(key("b")));
+    expect(hook.result.current.activeIndex).toBe(0);
+  });
+
+  test("accepts an inline option roster on every render", () => {
+    const hook = renderHook(() =>
+      useListboxKeys({
+        options: [{ value: "a", label: "Alpha" }],
+        open: true,
+        initialIndex: 0,
+        onOpen: () => {},
+        onCommit: () => {},
+        onClose: () => {},
+      }),
+    );
+    expect(hook.result.current.activeIndex).toBe(0);
+  });
+
+  test("reintroducing a removed option does not resurrect its old highlight", () => {
+    const hook = renderHook(
+      ({ options }) =>
+        useListboxKeys({
+          options,
+          open: true,
+          initialIndex: 1,
+          onOpen: () => {},
+          onCommit: () => {},
+          onClose: () => {},
+        }),
+      { initialProps: { options: OPTIONS } },
+    );
+    hook.rerender({ options: [OPTIONS[0]!] });
+    expect(hook.result.current.activeIndex).toBe(0);
+    hook.rerender({ options: [OPTIONS[1]!, OPTIONS[0]!] });
     expect(hook.result.current.activeIndex).toBe(1);
   });
 });

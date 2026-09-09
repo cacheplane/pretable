@@ -124,7 +124,7 @@ const columns: PretableColumn<Task>[] = [
 
 ### Multi-line text
 
-A `wrap: true` text column edits in a textarea that auto-grows with the draft. `Enter` inserts a newline instead of committing; **`Cmd`/`Ctrl` + `Enter`** commits and moves down. `Tab` still commits right, `Escape` cancels, and blur commits in place.
+A `wrap: true` text column edits in a textarea that auto-grows with the draft. `Enter` inserts a newline instead of committing; **`Cmd`/`Ctrl` + `Enter`** commits and moves down. `Tab` commits right and `Shift+Tab` left, `Escape` cancels, and blur commits in place.
 
 ### Numbers
 
@@ -144,11 +144,14 @@ A boolean column may declare `options` to **relabel** its two states — `[{ val
 
 An `enum` column that declares `options` (the same `{ value, label? }[]` the [filter checklist](/docs/grid/filtering) uses) edits in a combobox: a text input plus a listbox of the column's options.
 
-- **Seeded with the label.** The field opens showing the current option's `label` (falling back to its `value`), so it reads the way the cell does.
-- **Typing filters the list.** The draft is matched as a case-insensitive substring against both the label and the value; the full list shows until the user types.
-- **Keyboard.** `ArrowUp` / `ArrowDown` move the highlight (wrapping at the ends). `Enter` commits the highlighted option and moves **down**; `Tab` commits it and moves **right**; `Escape` cancels. Clicking an option commits it in place.
-- **Strict by default.** Committing text that matches no option is rejected with an inline **"Pick an option"** and the editor stays open. The combobox always resolves to one of the declared options — clearing a cell isn't reachable from it, because an emptied field just shows the full list again. Use [`renderEditor`](#custom-editors) if you need a clearable control.
-- **Blur reverts.** Clicking away with unmatched text cancels the edit rather than leaving a rejected value stuck open on the cell. (Text that _does_ match an option commits in place, like the other editors.)
+- **Identity is preserved.** The field shows the current option label, but an unchanged selection or an explicit option choice commits its canonical value. Duplicate labels cannot redirect a choice to the first option.
+- **Typing filters the list.** Labels and values match case-insensitively. Typed text must resolve to exactly one distinct option; ambiguous or unmatched text remains open with **"Pick an option"** on commit. Use arrows or a click to make an explicit choice.
+- **Clearing is supported.** Empty or whitespace-only text commits `null` on Enter, Tab or blur unless an option was intentionally chosen by navigation.
+- **Keyboard.** ArrowUp/ArrowDown choose a suggestion; Enter commits down, Tab right, and Shift reverses either direction. Escape cancels. Clicking an option commits in place.
+- **Blur.** An existing selection, unambiguous text, or an empty query commits in place. Invalid or ambiguous text does not silently become an option.
+
+A custom `parseEditValue` remains authoritative. It receives the canonical value
+as text for an explicit selection, or the typed query for text entry.
 
 The strictness is the point: the combobox picks from the declared set, it doesn't create new members. For a creatable or multi-select control, use [`renderEditor`](#custom-editors).
 
@@ -162,21 +165,23 @@ An `enum` column with **no** `options` gets the plain text editor and no strictn
 - **An empty or whitespace-only field commits `null`.** Clearing the field is how you clear a date cell.
 - **Typing retargets the calendar.** As soon as the field holds a complete valid date, the popover jumps to that month and highlights that day.
 - **Month navigation.** `PageDown` / `PageUp` move forward and back a month, as do the **‹** and **›** buttons in the popover header. The day-of-month is clamped to the target month's length, so 31 January + 1 month is 28 (or 29) February. Navigation also clamps at `0000-01-01` and `9999-12-31`; out-of-range calendar slots are disabled placeholders rather than wrapped dates.
-- **Commit keys.** `Enter` commits the highlighted day and moves **down**; `Tab` commits it and moves **right**; clicking a day commits it in place; `Escape` cancels. `Enter` only substitutes the calendar's day when the typed text is _itself_ a valid date — type garbage and press `Enter` and it still reaches the parser and is still rejected, rather than silently committing whatever month the calendar drifted to.
+- **Commit keys.** After intentional calendar navigation, Enter chooses the cursor date and commits down (Shift+Enter up). Otherwise Enter commits typed text. Tab always commits the typed/current draft, moving right (Shift+Tab left); it never accepts a merely browsed date. Clicking a day chooses it in place. Escape cancels.
 - **Blur commits or reverts.** Clicking away with a valid (or empty) field commits; clicking away with an unparseable date cancels the edit rather than leaving a rejected value stuck open on the cell.
 - **Focus never leaves the field.** The popover is a passive surface: it takes no focus, so the day cells are announced through `aria-activedescendant` on the input rather than by moving focus into the grid.
 
-#### Arrow keys move the calendar, not the caret
+#### Browsing and text editing
 
-This is the one behavior worth knowing before you use it. Inside a date editor:
+Browsing the calendar never writes the field. ArrowUp/ArrowDown enter calendar
+navigation and move by a week; PageUp/PageDown and the month buttons browse
+months. In calendar navigation, Left/Right move by a day. Typing returns to text
+editing. Before calendar navigation, Left/Right/Home/End retain native caret
+behavior. Tab or blur therefore cannot save a date merely because you browsed
+another month. The cursor outline is separate from the selected-date fill.
 
-| Key                        | Effect                                    |
-| -------------------------- | ----------------------------------------- |
-| `ArrowLeft` / `ArrowRight` | highlighted day **−1 / +1 day**           |
-| `ArrowUp` / `ArrowDown`    | highlighted day **−7 / +7 days** (a week) |
-| `PageUp` / `PageDown`      | **−1 / +1 month**                         |
-
-The field is a fixed ten-character date that opens fully selected, so caret movement is worth little and picking a nearby day is the common action. The trade-off is real, though: because navigating writes the highlighted day back into the field, **pressing an arrow key while a partial date is typed replaces what you typed**. Type `2026-08`, press `ArrowRight`, and the field becomes a full date. To correct a mistake, use `Backspace` and retype rather than arrowing back to it.
+The input is an editable combobox with `aria-haspopup="grid"`. Its expanded,
+controls and active-descendant attributes describe only mounted popup nodes;
+DOM focus stays in the input. See the
+[WAI-ARIA combobox pattern](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/).
 
 #### What the editor accepts from your cell values
 
@@ -268,36 +273,36 @@ const columns: PretableColumn<Task>[] = [
 
 `renderEditor` receives a `PretableEditorInput` — the edit input (`rowId`, `columnId`, `row`, `column`, `value`) plus the live draft controls:
 
-| Field      | Type                                           | Notes                                                              |
-| ---------- | ---------------------------------------------- | ------------------------------------------------------------------ |
-| `draft`    | `unknown`                                      | the current in-progress value                                      |
-| `setDraft` | `(value: unknown) => void`                     | update the draft as the user types                                 |
-| `commit`   | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus (`"down"`, `"right"`, …) |
-| `cancel`   | `() => void`                                   | discard the edit and restore the cell                              |
+| Field      | Type                                           | Notes                                                                                      |
+| ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `draft`    | `unknown`                                      | the current in-progress value                                                              |
+| `setDraft` | `(value: unknown) => void`                     | update the draft while editing; ignored during checking, validating, or saving             |
+| `commit`   | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus; ignored while permission or a commit is pending |
+| `cancel`   | `() => void`                                   | discard the edit and restore the cell                                                      |
 
-`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onRowChange`, replacing the built-in type parsing entirely. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (an application-owned instant `Date`, an enum) so the custom edit round-trip stays type-correct. For an instant, the application must choose its calendar-zone projection; these hooks do not make the value eligible for built-in date processing.
+`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onRowChange`, replacing the built-in type parsing entirely. It may return the value or a promise of that value; the editor stays in `validating` until parsing completes. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (an application-owned instant `Date`, an enum) so the custom edit round-trip stays type-correct. For an instant, the application must choose its calendar-zone projection; these hooks do not make the value eligible for built-in date processing.
 
 `renderEditor` wins over the built-in editor for every column that opens one. The exception is `type: "boolean"` — boolean cells [toggle in place](#booleans) and never open an editor, so `renderEditor` is ignored there.
 
 ## Lifecycle
 
-A commit is **pessimistic**: the grid keeps showing the draft while the work runs and only clears the edit once `onRowChange` resolves. The edit moves through a sequence of phases, observable as `snapshot.editing.status`:
+A commit is **pessimistic**: the grid keeps showing the draft while the work runs. In controlled `rows` mode, resolving `onRowChange` alone does not clear the editor: the supplied rows must also reflect the accepted change. Until then the cell remains in `saving`. The edit moves through phases observable as `snapshot.editing.status`:
 
 ```text
 checking → editing → validating → saving → (cleared)
                 ↑__________|              |
               invalid (validate            |
               returned a string)           ↓
-                                         error (onRowChange threw)
+                                         error (callback failed)
 ```
 
-| Phase        | Meaning                                                            |
-| ------------ | ------------------------------------------------------------------ |
-| `checking`   | an async `editable` is resolving; no editor yet                    |
-| `editing`    | the editor is open and accepting input                             |
-| `validating` | `validate` is running on the draft                                 |
-| `saving`     | validation passed; `onRowChange` is in flight                      |
-| `error`      | `onRowChange` rejected; `snapshot.editing.error` holds the message |
+| Phase        | Meaning                                                       |
+| ------------ | ------------------------------------------------------------- |
+| `checking`   | edit permission is resolving; the editor is read-only         |
+| `editing`    | the editor is open and accepting input                        |
+| `validating` | the admitted draft is being read, parsed, or validated        |
+| `saving`     | validation passed; saving or awaiting controlled rows         |
+| `error`      | a callback failed; `snapshot.editing.error` holds the message |
 
 When `validate` returns a string the edit returns to `editing` with `snapshot.editing.error` set to that message. When `onRowChange` throws or rejects, the edit enters `error` (it does **not** clear) so you can surface the failure and let the user retry or cancel.
 
@@ -323,9 +328,10 @@ if (editing?.status === "saving") {
 
 The built-in editors handle commit, errors, and pending state for you — no wiring required:
 
-- **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.) The exceptions are the [enum combobox](#enums) and the [date editor](#dates), where a draft the editor can't resolve — text matching no option, or an unparseable date — reverts on blur instead.
-- **Failures keep the editor open.** When `validate` rejects (returns a string) or `onRowChange` throws, the editor stays open and renders the message inline below the field — so the user can fix the value and try again. Press `Enter` to retry a failed commit, or `Escape` to cancel.
-- **Async work locks the field.** While an async `editable`, `validate`, or `onRowChange` is in flight (the `checking`, `validating`, and `saving` phases), the field is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
+- **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.) The [date editor](#dates) reverts an unparseable date on blur. The [enum combobox](#enums) keeps ambiguous or unmatched text open with a validation error.
+- **Failures keep an established editor open.** A returned validation message or a thrown/rejected permission, parser, validation, or save callback leaves the draft available with an inline error. Press `Enter` to retry or `Escape` to cancel. After a failed permission check, retry checks permission again before parsing or saving; a denied check closes the edit without a write. A failure before an editor can be established, such as an initial formatter throwing, leaves no active edit and emits a diagnostic.
+- **Pending work locks the draft and commit path.** During `checking`, `validating`, and `saving`, the field is read-only and marked `aria-busy="true"`. Additional commit requests and `setDraft` writes are ignored, including requests from a custom editor. Parsing also runs under this protection, so a reentrant callback cannot dispatch a second save or change the draft being saved.
+- **Cancellation retires the session.** Late callback results cannot reopen a cancelled editor, alter its replacement, or move focus. Cancellation cannot undo a write already dispatched to your application; handle transaction rollback in the application if needed.
 
 [Boolean cells](#booleans) have no field: pending renders as a dimmed, disabled checkbox, and a failed commit shows the same inline error on the cell — click to retry, `Escape` to cancel.
 
@@ -341,14 +347,14 @@ Editing reuses the focused cell from the [selection](/docs/grid/selection) model
 | Double-click           | on an editable cell  | begin editing that cell                                                |
 | Any printable char     | cell focused         | begin editing, seeding the draft with that character (type-to-replace) |
 | `Enter` / `Space`      | boolean cell focused | toggle the checkbox and commit — no editor opens                       |
-| `Enter`                | editing              | commit, then move focus **down**                                       |
+| `Enter`                | editing              | commit, then move focus **down**; Shift reverses to **up**             |
 | `Cmd`/`Ctrl` + `Enter` | editing (multi-line) | commit, then move focus **down** (plain `Enter` inserts a newline)     |
-| `Tab`                  | editing              | commit, then move focus **right**                                      |
-| Arrow keys             | editing (date)       | move the calendar's highlighted day — ±1 day, ±7 for up/down           |
+| `Tab`                  | editing              | commit, then move focus **right**; Shift reverses to **left**          |
+| Arrow keys             | editing (date)       | up/down enter calendar navigation; arrows then move the cursor         |
 | `PageUp` / `PageDown`  | editing (date)       | move the calendar back / forward a month                               |
 | `Escape`               | editing              | cancel — discard the draft, restore the cell                           |
 
-A begin trigger on a non-editable column is a no-op. Editable [boolean columns](#booleans) never open an editor: `Enter` and `Space` toggle in place, `F2` and type-to-replace do nothing, and `Escape` cancels a failed toggle. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation — as are `ArrowUp` / `ArrowDown` in the [number](#numbers) and [enum](#enums) editors, and every arrow key in the [date](#dates) editor.
+A begin trigger on a non-editable column is a no-op. Editable [boolean columns](#booleans) never open an editor: `Enter` and `Space` toggle in place, `F2` and type-to-replace do nothing, and `Escape` cancels a failed toggle. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation — as are `ArrowUp` / `ArrowDown` in the [number](#numbers) and [enum](#enums) editors, and calendar navigation keys in the [date](#dates) editor.
 
 ## See also
 
@@ -357,3 +363,13 @@ A begin trigger on a non-editable column is a no-op. Editable [boolean columns](
 - [Keyboard](/docs/grid/keyboard) — the full keyboard contract.
 - [Headless engine](/docs/headless) — read `snapshot.editing` to build your own editor.
 - [API reference](/docs/grid/api-reference) — `PretableEditInput`, `PretableEditorInput`, `PretableEditState`, `PretableEditStatus` types.
+
+IME composition takes precedence over editor and grid commands. Enter,
+Escape, Tab and arrow events during composition retain browser behavior and
+do not save, cancel, step values or start an edit. Automated coverage includes
+composition events and the legacy key-code fallback; physical OS IME and human
+screen-reader validation are separate from those automated checks.
+
+The built-in fields resolve `components.TextInput` and `components.Textarea`;
+number/date action buttons resolve `components.IconButton`. Replacements must
+preserve native props, event handlers, ARIA/data hooks, and forwarded refs.

@@ -419,6 +419,7 @@ import {
   parseTsv,
   type RejectedPasteCell,
 } from "./paste";
+import { useCompositionGuard } from "./editors/editor-keyboard";
 import { parseDraftForType } from "./editors/type-parsing";
 import { deriveRowChange } from "./row-change";
 import {
@@ -2217,6 +2218,7 @@ export function PretableSurface<
     [messages],
   );
   const resolvedComponents = useResolvedComponents(components);
+  const composition = useCompositionGuard();
   // The surface draws two checkboxes itself — the header select-all and the
   // row-select cell. Read off the resolved map rather than through
   // `usePretableComponents()`: this component is the one that PROVIDES that
@@ -4502,6 +4504,7 @@ export function PretableSurface<
     effectiveMessagesRef.current = effectiveMessages;
   });
   const pendingRowsEditRef = useRef<{
+    readonly moveDirection?: PretableFocusDirection;
     readonly rowId: PretableRowId;
     readonly changes: Partial<TRow>;
     readonly sessionToken: number | null;
@@ -4533,10 +4536,31 @@ export function PretableSurface<
           edit,
         ),
       getSnapshot: () => {
-        // Capturing the core is the bridge's lifecycle boundary even though
-        // operations deliberately forward through the latest projection.
-        void controllerCore;
-        return editGridProjectionRef.current.getSnapshot();
+        // Read the live core: the render projection can lag synchronous
+        // begin/status transitions and would misidentify the active session.
+        const editing = controllerCore.getState().editing;
+        return {
+          editing:
+            editing === null
+              ? null
+              : {
+                  rowId: editing.rowId,
+                  columnId: editing.columnId,
+                  draft: editing.value,
+                },
+        };
+      },
+      getEditSessionToken: () => editSessionRef.current.activeToken,
+      markChecking: () => {
+        const editing = controllerCore.getState().editing;
+        if (editing === null) return;
+        // Permission retry belongs to the same surface session. The public
+        // status setter excludes checking, so re-enter it through core begin.
+        controllerCore.beginEdit({
+          ...editing,
+          value: editing.value as never,
+          status: "checking",
+        });
       },
       markEditing: () => editGridProjectionRef.current.markEditing(),
       markEditValidating: () =>
@@ -4564,6 +4588,7 @@ export function PretableSurface<
     }, []),
     onCommit: useCallback(
       async (payload: {
+        moveDirection?: PretableFocusDirection;
         rowId: PretableRowId;
         columnId: string;
         value: unknown;
@@ -4590,6 +4615,7 @@ export function PretableSurface<
           const callback = onRowChangeRef.current;
           if (callback === undefined) return;
           const pending = {
+            moveDirection: payload.moveDirection,
             rowId: change.rowId,
             changes: change.changes,
             sessionToken: editSessionRef.current.activeToken,
@@ -4684,6 +4710,10 @@ export function PretableSurface<
     pendingRowsEditRef.current = null;
     if (pending.sessionToken !== editSessionRef.current.activeToken) return;
     endEditSession();
+    // Controlled rows acknowledge saves here rather than in the controller's
+    // immediate completion path. Follow its requested direction exactly once.
+    if (pending.moveDirection)
+      editGridProjectionRef.current.moveFocus(pending.moveDirection);
   }, [endEditSession, rowModelSnapshot]);
 
   // Boolean cells toggle-and-commit directly through the edit lifecycle (no
@@ -5978,7 +6008,10 @@ export function PretableSurface<
         );
         emitFocusChange(entryRow.ref, columnId);
       }}
+      onCompositionStartCapture={composition.onCompositionStart}
+      onCompositionEndCapture={composition.onCompositionEnd}
       onKeyDown={(event) => {
+        if (composition.isComposing(event)) return;
         // Esc during reorder drag cancels without engine mutation.
         if (
           (event.key === "Escape" || event.key === "Esc") &&
@@ -7686,6 +7719,7 @@ export function PretableSurface<
                             id={`pretable-edit-error-${id}-${column.id}`}
                             data-pretable-edit-error
                             role="alert"
+                            title={cellEdit.error}
                           >
                             {cellEdit.error}
                           </div>
@@ -7856,6 +7890,7 @@ export function PretableSurface<
             const options = resolveColumnOptions(col, () => [], processing);
             return (
               <FilterMenu
+                anchor={filterOpenState.anchor}
                 key={filterOpenState.columnId}
                 columnId={filterOpenState.columnId}
                 label={col.header ?? filterOpenState.columnId}

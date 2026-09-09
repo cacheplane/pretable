@@ -7,10 +7,9 @@
  * span) and `data-pretable-listbox` / `data-pretable-option` (list), and a
  * site's own attribute still arrives on the trigger through the spread.
  *
- * `data-pretable-value` is written for one reason: a button has no `.value`,
- * and every test that used to read one reads this instead. It is the ONE
- * COMMITTED value — deliberately not the name the options wear, which is
- * `data-pretable-option-value` and says which option an element IS.
+ * `data-pretable-value` exposes the committed option value independently of
+ * the native button's `.value`. Options use `data-pretable-option-value` to
+ * identify themselves; the trigger carries only the committed selection.
  */
 import {
   createElement,
@@ -26,9 +25,12 @@ import {
   type ReactNode,
 } from "react";
 
+import { observeAnchor } from "../overlay/observe-anchor";
+import { useOverlayContainer } from "../overlay/portal-context";
 import { warnOnce } from "../dev-warn";
 import { ChevronDownIcon } from "../icons";
 import type { PretableSite } from "./button";
+import { useComposedRefs } from "./compose-refs";
 import {
   EMPTY_RECT,
   firstEnabledIndex,
@@ -45,14 +47,25 @@ import {
  *
  * @public
  */
-export interface PretableSelectOption {
-  /** The string handed back to `onChange` and written to `data-pretable-value`. */
+export type PretableSelectOption = {
+  /** Stable unique identity, passed to `onChange` and `data-pretable-value`. */
   readonly value: string;
-  /** What the option shows, and what the trigger shows once it is chosen. */
-  readonly label: ReactNode;
   /** Shown, skipped by the keyboard, inert to click. */
   readonly disabled?: boolean;
-}
+} & (
+  | {
+      /** What the option and selected trigger show. */
+      readonly label: string | number;
+      /** Optional typeahead text; otherwise inferred from the label. */
+      readonly textValue?: string;
+    }
+  | {
+      /** Rich content shown in the option and selected trigger. */
+      readonly label: Exclude<ReactNode, string | number>;
+      /** Required typeahead text for a non-primitive label. */
+      readonly textValue: string;
+    }
+);
 
 /**
  * Type identity, not two-way assignability: an OPTIONAL field added to one
@@ -124,7 +137,6 @@ export const PretableSelect = forwardRef<
     disabled,
     onClick,
     onKeyDown,
-    onPointerDown,
     ...buttonProps
   },
   ref,
@@ -140,23 +152,16 @@ export const PretableSelect = forwardRef<
 
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // A merged callback ref: the component needs the node (to measure and to
-  // restore focus) and the consumer still gets whichever ref form it passed.
-  const setTriggerRef = useCallback(
-    (node: HTMLButtonElement | null) => {
-      triggerRef.current = node;
-      if (typeof ref === "function") ref(node);
-      else if (ref) ref.current = node;
-    },
-    [ref],
-  );
+  const setTriggerRef = useComposedRefs(triggerRef, ref);
   const [open, setOpen] = useState(false);
+  const container = useOverlayContainer();
+  const visible = open && container !== null;
   const [rect, setRect] = useState<DOMRect>(EMPTY_RECT);
 
-  // Disabled mid-open: nothing else can close the list, and a disabled button
-  // receives no keydown, so Escape goes with it. Adjusting state during
-  // render, the React-sanctioned form.
-  if (disabled && open) setOpen(false);
+  // Close synchronously if the trigger becomes disabled or its roster empties:
+  // a disabled button cannot dismiss with Escape, and an empty Listbox has no
+  // DOM target for the trigger's ARIA references.
+  if (open && (disabled || options.length === 0)) setOpen(false);
 
   const selectedIndex = options.findIndex((o) => o.value === value);
   const selected = options[selectedIndex];
@@ -179,6 +184,18 @@ export const PretableSelect = forwardRef<
     },
     [value, onChange, close],
   );
+  const measure = useCallback(() => {
+    const next = triggerRef.current?.getBoundingClientRect();
+    if (!next) return;
+    setRect((previous) =>
+      previous.left === next.left &&
+      previous.top === next.top &&
+      previous.width === next.width &&
+      previous.height === next.height
+        ? previous
+        : next,
+    );
+  }, []);
   const openList = useCallback(() => {
     if (disabled) return;
     // Nothing to choose. Opening on an empty roster would leave the trigger
@@ -187,37 +204,37 @@ export const PretableSelect = forwardRef<
     // no list. The keyboard path lands here too: `useListboxKeys` opens a
     // closed trigger through `onOpen`, which is this.
     if (options.length === 0) return;
-    if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+    measure();
     setOpen(true);
-  }, [disabled, options.length]);
+  }, [disabled, options.length, measure]);
 
   const keys = useListboxKeys({
     options,
     open,
     initialIndex:
-      selectedIndex >= 0 ? selectedIndex : firstEnabledIndex(options),
+      selectedIndex >= 0 && !selected?.disabled
+        ? selectedIndex
+        : firstEnabledIndex(options),
     onOpen: openList,
     onCommit: commit,
     onClose: close,
   });
 
-  // The list is `position: fixed` in a portal: re-anchor when anything
-  // scrolls or resizes while it is open (capture catches the grid's own
-  // scrollers, which do not bubble).
+  // React layout changes and delayed portal attachment can move the trigger
+  // without a scroll/resize event. Equal bounds retain state, so measuring
+  // after each visible render cannot create a render loop.
   useLayoutEffect(() => {
-    if (!open) return;
-    const measure = () => {
-      if (triggerRef.current) {
-        setRect(triggerRef.current.getBoundingClientRect());
-      }
-    };
-    window.addEventListener("scroll", measure, true);
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("scroll", measure, true);
-      window.removeEventListener("resize", measure);
-    };
-  }, [open]);
+    if (visible) measure();
+  });
+
+  // While visible, also follow CSS changes made outside React. Observe only
+  // the trigger's ancestor chain, rather than polling or watching the entire
+  // document subtree; scope direction, classes and tokens can all move it.
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current;
+    if (!visible || !trigger) return;
+    return observeAnchor(trigger, measure);
+  }, [visible, measure]);
 
   return (
     <>
@@ -236,10 +253,10 @@ export const PretableSelect = forwardRef<
         role="combobox"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
+        aria-expanded={visible}
+        aria-controls={visible ? listId : undefined}
         aria-activedescendant={
-          open && keys.activeIndex >= 0
+          visible && keys.activeIndex >= 0
             ? listboxOptionId(listId, keys.activeIndex)
             : undefined
         }
@@ -247,13 +264,6 @@ export const PretableSelect = forwardRef<
         data-pretable-select=""
         data-pretable-site={site}
         data-pretable-value={value}
-        onPointerDown={(e) => {
-          onPointerDown?.(e);
-          // The toggling-anchor contract (see listbox.tsx): the document's
-          // outside-press listener must not see this press, or it closes the
-          // list that the click then reopens.
-          e.stopPropagation();
-        }}
         onClick={(e) => {
           onClick?.(e);
           if (e.defaultPrevented) return;
@@ -281,6 +291,7 @@ export const PretableSelect = forwardRef<
           anchor={rect}
           onSelect={commit}
           onClose={closeFromOutside}
+          trigger={triggerRef}
         />
       ) : null}
     </>

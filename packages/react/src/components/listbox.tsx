@@ -14,11 +14,6 @@
  * would clip a fixed popover. Placed by `menuPopoverStyle`, so a list clamps
  * against the viewport exactly as the menus do.
  *
- * A TOGGLING trigger — one whose click both opens and closes the list — must
- * `stopPropagation()` on its own pointerdown, or the outside-press listener
- * below closes what the click then reopens, and the trigger could never
- * dismiss its own list. Same contract `menu-keyboard.ts` states for menus.
- *
  * Every option carries `data-pretable-option-value`: which option it IS, the
  * one name the whole kit uses for that — the checklists' choices wear it too.
  * Not `data-pretable-value`, which is a select trigger's one COMMITTED value.
@@ -32,9 +27,11 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import { menuPopoverStyle, popoverStyle } from "../overlay/popover-position";
+import { useOutsidePointer } from "../overlay/outside-pointer";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 
 /**
@@ -71,20 +68,27 @@ export const EMPTY_RECT: DOMRect =
       } as DOMRect)
     : new DOMRect(0, 0, 0, 0);
 
-/** One entry in a list. `disabled` is skipped by the keyboard and inert to click. */
-export interface ListboxOption {
+/** One entry with a stable unique value. Disabled entries are inert to input. */
+export type ListboxOption = {
   readonly value: string;
-  readonly label: ReactNode;
   readonly disabled?: boolean;
-}
+} & (
+  | { readonly label: string | number; readonly textValue?: string }
+  | {
+      readonly label: Exclude<ReactNode, string | number>;
+      readonly textValue: string;
+    }
+);
 
 /** How long two keystrokes stay one typeahead query. The native control's feel. */
 const TYPEAHEAD_RESET_MS = 500;
 
-/** Text for typeahead: a string label as is, a node by its rendered text. */
-function labelText(label: ReactNode): string {
-  if (typeof label === "string") return label;
-  if (typeof label === "number") return String(label);
+/** Explicit text wins; only primitive labels can supply their own text. */
+function optionText(option: ListboxOption): string {
+  if (typeof option.textValue === "string") return option.textValue;
+  if (typeof option.label === "string") return option.label;
+  if (typeof option.label === "number") return String(option.label);
+  // JavaScript callers can omit the text required by the rich-label type.
   return "";
 }
 
@@ -109,6 +113,7 @@ export interface ListboxProps {
   onSelect: (value: string) => void;
   /** Outside pointerdown. No focus return: the press chose a new target. */
   onClose: () => void;
+  trigger?: HTMLElement | RefObject<HTMLElement | null> | null;
 }
 
 export function Listbox({
@@ -121,20 +126,11 @@ export function Listbox({
   "aria-label": ariaLabel,
   onSelect,
   onClose,
+  trigger,
 }: ListboxProps): ReactElement | null {
   const rootRef = useRef<HTMLUListElement>(null);
 
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      const root = rootRef.current;
-      // A null root is OUTSIDE, not "no answer": the empty list renders
-      // nothing (below) while these hooks still run, and a guard that
-      // required a root would swallow the only press that can close it.
-      if (e.target instanceof Node && !root?.contains(e.target)) onClose();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [onClose]);
+  useOutsidePointer(rootRef, onClose, trigger);
 
   // `options` is a dependency, not noise: filtering the list changes WHICH
   // option sits at `activeIndex` without changing the index itself.
@@ -164,14 +160,6 @@ export function Listbox({
         // Keep focus on the trigger: a blur before the click lands would
         // close (or, in the editor, commit) under the pointer.
         onMouseDown={(e) => e.preventDefault()}
-        // The list is portalled to body, so every host popover's own
-        // outside-press listener (the filter menu's, a dialog's) would read a
-        // press INSIDE this list as outside and dismiss itself under the
-        // pointer. Stopping it here is the mirror of the toggling trigger's
-        // own stopPropagation. This list's dismissal is unaffected: its
-        // listener tests containment, so the press it must not see is exactly
-        // the one it no longer receives, and an outside press still arrives.
-        onPointerDown={(e) => e.stopPropagation()}
       >
         {options.map((option, i) => (
           <li
@@ -182,7 +170,7 @@ export function Listbox({
             aria-disabled={option.disabled ? true : undefined}
             data-pretable-option=""
             data-pretable-option-value={option.value}
-            data-active={i === activeIndex ? "" : undefined}
+            data-pretable-active={i === activeIndex ? "" : undefined}
             onClick={() => {
               if (!option.disabled) onSelect(option.value);
             }}
@@ -269,17 +257,50 @@ export function useListboxKeys({
   onCommit,
   onClose,
 }: UseListboxKeysInput): UseListboxKeysResult {
-  const [activeIndex, setActiveIndex] = useState(initialIndex);
-
-  // Re-seed the highlight from the value each time the list opens —
-  // adjusting state during render, the React-sanctioned form; an effect
-  // would commit one frame of stale highlight and trips the
-  // set-state-in-effect rule.
-  const [prevOpen, setPrevOpen] = useState(open);
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    if (open) setActiveIndex(initialIndex);
+  // Values preserve identity through roster changes. An explicit index request
+  // is resolved on the next render, against that render's roster: an editor
+  // can reset to 0 in the same event that changes its filtered options.
+  const [active, setActive] = useState<
+    { value: string | null } | { index: number }
+  >({ index: initialIndex });
+  const firstEnabled = firstEnabledIndex(options);
+  const hasEnabled = firstEnabled >= 0;
+  const [previous, setPrevious] = useState({ open, hasEnabled });
+  const opening = open && !previous.open;
+  const requestedIndex = opening
+    ? initialIndex
+    : "index" in active
+      ? active.index
+      : undefined;
+  let activeIndex: number;
+  if (requestedIndex !== undefined) {
+    // -1 is the hook's explicit no-highlight sentinel. Other invalid seeds
+    // (including disabled options) fall back to the first enabled choice.
+    activeIndex =
+      requestedIndex < 0
+        ? -1
+        : options[requestedIndex] && !options[requestedIndex].disabled
+          ? requestedIndex
+          : firstEnabled;
+  } else {
+    const value = "value" in active ? active.value : null;
+    activeIndex = options.findIndex((o) => o.value === value && !o.disabled);
+    if (activeIndex < 0 && (value !== null || !previous.hasEnabled)) {
+      activeIndex = firstEnabled;
+    }
   }
+  const activeValue = options[activeIndex]?.value ?? null;
+  if (previous.open !== open || previous.hasEnabled !== hasEnabled) {
+    setPrevious({ open, hasEnabled });
+  }
+  if (!("value" in active) || active.value !== activeValue) {
+    // Remember the fallback too: removing and later reintroducing an option
+    // must not resurrect a highlight the user has already moved away from.
+    setActive({ value: activeValue });
+  }
+  const setActiveIndex = useCallback((index: number) => {
+    setActive({ index });
+  }, []);
 
   const buffer = useRef("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -302,7 +323,9 @@ export function useListboxKeys({
       if (key === "ArrowDown" || key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();
-        setActiveIndex((i) => step(options, i, key === "ArrowDown" ? 1 : -1));
+        setActiveIndex(
+          step(options, activeIndex, key === "ArrowDown" ? 1 : -1),
+        );
         return;
       }
       if (key === "Home" || key === "End") {
@@ -343,21 +366,25 @@ export function useListboxKeys({
         }, TYPEAHEAD_RESET_MS);
         const query = buffer.current;
         const hit = options.findIndex(
-          (o) =>
-            !o.disabled && labelText(o.label).toLowerCase().startsWith(query),
+          (o) => !o.disabled && optionText(o).toLowerCase().startsWith(query),
         );
         if (hit >= 0) setActiveIndex(hit);
       }
     },
-    [open, options, activeIndex, onOpen, onCommit, onClose],
+    [open, options, activeIndex, onOpen, onCommit, onClose, setActiveIndex],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Each open/close boundary starts a new query, even within 500ms.
+    buffer.current = "";
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    return () => {
+      buffer.current = "";
       if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
+      timer.current = null;
+    };
+  }, [open]);
 
   return { activeIndex, setActiveIndex, onKeyDown };
 }
