@@ -818,3 +818,137 @@ it.each(["native", "lifecycle", "legacy"])(
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   },
 );
+
+it.each([
+  {
+    key: "Tab",
+    shiftKey: true,
+    row: "r1",
+    column: "quantity",
+    nextRow: "r1",
+    nextColumn: "name",
+  },
+  {
+    key: "Tab",
+    shiftKey: false,
+    row: "r1",
+    column: "name",
+    nextRow: "r1",
+    nextColumn: "quantity",
+  },
+  {
+    key: "Enter",
+    shiftKey: true,
+    row: "r2",
+    column: "quantity",
+    nextRow: "r1",
+    nextColumn: "quantity",
+  },
+  {
+    key: "Enter",
+    shiftKey: false,
+    row: "r1",
+    column: "quantity",
+    nextRow: "r2",
+    nextColumn: "quantity",
+  },
+])(
+  "controlled rows honor $key shift=$shiftKey after acknowledging the save",
+  async ({ key, shiftKey, row, column, nextRow, nextColumn }) => {
+    function Harness() {
+      const [rows, setRows] = React.useState([
+        { id: "r1", name: "Ada", quantity: 1 },
+        { id: "r2", name: "Linus", quantity: 2 },
+      ]);
+      return (
+        <PretableSurface
+          ariaLabel="Directional save"
+          columns={[
+            { id: "name", editable: true },
+            { id: "quantity", type: "number", editable: true },
+          ]}
+          rows={rows}
+          getRowId={(row) => row.id}
+          viewportHeight={300}
+          onRowChange={(change) =>
+            setRows((previous) =>
+              previous.map((row) =>
+                row.id === change.rowId ? { ...row, ...change.changes } : row,
+              ),
+            )
+          }
+        />
+      );
+    }
+    const view = render(<Harness />);
+    const cell = (rowId: string, columnId: string) =>
+      view.container.querySelector<HTMLElement>(
+        `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="${columnId}"]`,
+      )!;
+    fireEvent.click(cell(row, column));
+    fireEvent.keyDown(cell(row, column), { key: "Enter" });
+    const field = await view.findByRole("textbox");
+    fireEvent.change(field, { target: { value: "7" } });
+    await act(async () => {
+      fireEvent.keyDown(field, { key, shiftKey });
+    });
+    expect(view.queryByRole("textbox")).toBeNull();
+    expect(cell(row, column)).toHaveTextContent("7");
+    expect(cell(nextRow, nextColumn)).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
+  },
+);
+it.each([false, true])(
+  "delayed controlled acknowledgement moves only a live session (cancel=%s)",
+  async (cancel) => {
+    let acknowledge: () => void = () => {
+      throw new Error("Save not requested");
+    };
+    function Harness() {
+      const [rows, setRows] = React.useState([
+        { id: "r1", name: "Ada", quantity: 1 },
+      ]);
+      return (
+        <PretableSurface
+          ariaLabel="Delayed save"
+          columns={[
+            { id: "name", editable: true },
+            { id: "quantity", type: "number", editable: true },
+          ]}
+          rows={rows}
+          getRowId={(row) => row.id}
+          viewportHeight={300}
+          onRowChange={(change) => {
+            acknowledge = () =>
+              setRows((previous) =>
+                previous.map((row) => ({ ...row, ...change.changes })),
+              );
+          }}
+        />
+      );
+    }
+    const view = render(<Harness />);
+    const cell = (column: string) =>
+      view.container.querySelector<HTMLElement>(
+        `[data-pretable-row-id="r1"] [data-pretable-column-id="${column}"]`,
+      )!;
+    fireEvent.click(cell("quantity"));
+    fireEvent.keyDown(cell("quantity"), { key: "Enter" });
+    const field = await view.findByRole("textbox");
+    fireEvent.change(field, { target: { value: "7" } });
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Tab", shiftKey: true });
+    });
+    expect(field).toHaveAttribute("readonly");
+    expect(cell("quantity")).toHaveAttribute("data-pretable-focused", "true");
+    if (cancel) fireEvent.keyDown(field, { key: "Escape" });
+    await act(async () => acknowledge());
+    expect(view.queryByRole("textbox")).toBeNull();
+    expect(cell(cancel ? "quantity" : "name")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
+  },
+);

@@ -4504,6 +4504,7 @@ export function PretableSurface<
     effectiveMessagesRef.current = effectiveMessages;
   });
   const pendingRowsEditRef = useRef<{
+    readonly moveDirection?: PretableFocusDirection;
     readonly rowId: PretableRowId;
     readonly changes: Partial<TRow>;
     readonly sessionToken: number | null;
@@ -4587,6 +4588,7 @@ export function PretableSurface<
     }, []),
     onCommit: useCallback(
       async (payload: {
+        moveDirection?: PretableFocusDirection;
         rowId: PretableRowId;
         columnId: string;
         value: unknown;
@@ -4613,6 +4615,7 @@ export function PretableSurface<
           const callback = onRowChangeRef.current;
           if (callback === undefined) return;
           const pending = {
+            moveDirection: payload.moveDirection,
             rowId: change.rowId,
             changes: change.changes,
             sessionToken: editSessionRef.current.activeToken,
@@ -4707,6 +4710,10 @@ export function PretableSurface<
     pendingRowsEditRef.current = null;
     if (pending.sessionToken !== editSessionRef.current.activeToken) return;
     endEditSession();
+    // Controlled rows acknowledge saves here rather than in the controller's
+    // immediate completion path. Follow its requested direction exactly once.
+    if (pending.moveDirection)
+      editGridProjectionRef.current.moveFocus(pending.moveDirection);
   }, [endEditSession, rowModelSnapshot]);
 
   // Boolean cells toggle-and-commit directly through the edit lifecycle (no

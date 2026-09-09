@@ -66,6 +66,7 @@ export interface CellEditControllerOptions<
   getColumns: () => PretableColumn<TRow>[];
   getRowById: (rowId: TRowId) => TRow | null;
   onCommit?: (payload: {
+    moveDirection?: PretableFocusDirection;
     rowId: TRowId;
     columnId: string;
     value: unknown;
@@ -272,7 +273,12 @@ export function createCellEditController<
         s.phase = "saving";
         grid.markEditSaving();
         if (!current(s)) return;
-        const result = await onCommit?.({ ...s.addr, value, row: input.row });
+        const result = await onCommit?.({
+          ...s.addr,
+          value,
+          row: input.row,
+          ...(moveDirection ? { moveDirection } : {}),
+        });
         if (!current(s) || result === "keep-open") return;
         invalidate();
         grid.commitEditSucceeded();
