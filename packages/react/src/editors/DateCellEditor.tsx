@@ -1,4 +1,5 @@
-import { createElement, useId, useLayoutEffect, useRef, useState } from "react";
+import { usePretableComponents } from "../components/context";
+import { createElement, useId, useState } from "react";
 
 import type { PretableFocusDirection } from "@pretable/core";
 import {
@@ -7,6 +8,7 @@ import {
   addDateValueDays,
   addDateValueMonths,
   isValidDateValue,
+  dateValueToUtcMs,
 } from "@pretable-internal/calendar-date";
 
 import { useOverlayContainer } from "../overlay/portal-context";
@@ -14,6 +16,8 @@ import { OverlayPortal } from "../overlay/OverlayPortal";
 import { popoverStyle } from "../overlay/popover-position";
 import type { PretableEditorInput } from "../types";
 import { monthLabel, monthMatrix, todayIso } from "./date-utils";
+import { editorCommitDirection } from "./editor-keyboard";
+import { useEditorAnchor } from "./use-editor-anchor";
 import { useEditorField } from "./use-editor-field";
 
 const WEEKDAYS = [
@@ -27,6 +31,7 @@ const WEEKDAYS = [
 ] as const;
 
 interface DateEditorState {
+  readonly navigating: boolean;
   readonly observedDraft: unknown;
   readonly cursor: string;
   readonly selected: string | null;
@@ -40,6 +45,7 @@ const initialState = (
 ): DateEditorState => {
   const canonical = isValidDateValue(draft) ? draft : null;
   return {
+    navigating: false,
     observedDraft: draft,
     cursor: canonical ?? todayIso(),
     selected: canonical,
@@ -49,11 +55,12 @@ const initialState = (
 };
 
 export function DateCellEditor({ input }: { input: PretableEditorInput }) {
-  const { ref, pending, fieldProps } = useEditorField<HTMLInputElement>(input);
+  const { TextInput, IconButton } = usePretableComponents();
+  const { attachRef, pending, fieldProps, isComposing } =
+    useEditorField<HTMLInputElement>(input);
   const gridId = useId();
   const overlayReady = useOverlayContainer() !== null;
-  const anchorRef = useRef<HTMLSpanElement>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const { anchorRef, rect } = useEditorAnchor(overlayReady);
   const [storedState, setStoredState] = useState<DateEditorState>(() =>
     initialState(input.draft, input.seededFromTyping ?? false),
   );
@@ -64,6 +71,7 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
     const reflectsUserWrite =
       state.userModified && Object.is(state.userDraft, input.draft);
     state = {
+      navigating: reflectsUserWrite && state.navigating,
       observedDraft: input.draft,
       cursor: canonical ?? state.cursor,
       selected: canonical,
@@ -73,29 +81,18 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
     setStoredState(state);
   }
 
-  useLayoutEffect(() => {
-    const measure = () => {
-      if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
-    };
-    measure();
-    window.addEventListener("scroll", measure, true);
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("scroll", measure, true);
-      window.removeEventListener("resize", measure);
-    };
-  }, []);
-
   const text = String(input.draft ?? "");
   const active = state.cursor;
   const weeks = monthMatrix(active);
   const today = todayIso();
   const previousMonthDisabled =
-    active.slice(0, 7) === MIN_DATE_VALUE.slice(0, 7);
-  const nextMonthDisabled = active.slice(0, 7) === MAX_DATE_VALUE.slice(0, 7);
+    pending || active.slice(0, 7) === MIN_DATE_VALUE.slice(0, 7);
+  const nextMonthDisabled =
+    pending || active.slice(0, 7) === MAX_DATE_VALUE.slice(0, 7);
 
   const writeUserDraft = (next: string, selected: string | null) => {
     setStoredState({
+      navigating: true,
       observedDraft: input.draft,
       cursor: selected ?? state.cursor,
       selected,
@@ -113,8 +110,8 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
   };
 
   const move = (next: string) => {
-    if (pending || next === state.cursor) return;
-    writeUserDraft(next, next);
+    if (pending) return;
+    setStoredState({ ...state, cursor: next, navigating: true });
   };
 
   const blur = () => {
@@ -128,7 +125,7 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
     }
     if (
       input.column.parseEditValue ||
-      state.userDraft === "" ||
+      (typeof state.userDraft === "string" && state.userDraft.trim() === "") ||
       isValidDateValue(state.userDraft)
     ) {
       input.commit();
@@ -139,9 +136,13 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
 
   return (
     <span ref={anchorRef} data-pretable-date-editor="">
-      <input
-        ref={ref}
+      <TextInput
+        site="cell-editor"
+        ref={attachRef}
         className="pretable-cell-editor"
+        role="combobox"
+        aria-haspopup="grid"
+        aria-expanded={overlayReady}
         inputMode="numeric"
         placeholder="YYYY-MM-DD"
         aria-controls={overlayReady ? gridId : undefined}
@@ -152,6 +153,7 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
           const next = event.target.value;
           const canonical = isValidDateValue(next) ? next : null;
           setStoredState({
+            navigating: false,
             observedDraft: input.draft,
             cursor: canonical ?? state.cursor,
             selected: canonical,
@@ -163,6 +165,12 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
         {...fieldProps}
         onBlur={blur}
         onKeyDown={(event) => {
+          if (isComposing(event)) return;
+          if (
+            !state.navigating &&
+            ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+          )
+            return;
           const step =
             event.key === "ArrowLeft"
               ? -1
@@ -185,10 +193,23 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
             move(addDateValueMonths(active, event.key === "PageDown" ? 1 : -1));
             return;
           }
-          if (event.key === "Enter" && state.selected !== null) {
+          if (
+            state.navigating &&
+            (event.key === "Home" || event.key === "End")
+          ) {
             event.preventDefault();
             event.stopPropagation();
-            choose(state.selected, "down");
+            const day =
+              (new Date(dateValueToUtcMs(active)).getUTCDay() + 6) % 7;
+            move(
+              addDateValueDays(active, event.key === "Home" ? -day : 6 - day),
+            );
+            return;
+          }
+          if (event.key === "Enter" && state.navigating) {
+            event.preventDefault();
+            event.stopPropagation();
+            choose(active, editorCommitDirection(event));
             return;
           }
           fieldProps.onKeyDown(event);
@@ -197,29 +218,31 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
       <OverlayPortal>
         <div
           data-pretable-date-popover=""
-          style={rect ? popoverStyle(rect) : undefined}
+          style={popoverStyle(rect)}
           onMouseDown={(event) => event.preventDefault()}
         >
           <div data-pretable-date-header="">
-            <button
-              type="button"
+            <IconButton
               tabIndex={-1}
               aria-label="Previous month"
+              site="date-previous-month"
+              data-pretable-date-previous-month=""
               disabled={previousMonthDisabled}
               onClick={() => move(addDateValueMonths(active, -1))}
             >
               ‹
-            </button>
+            </IconButton>
             <span>{monthLabel(active)}</span>
-            <button
-              type="button"
+            <IconButton
               tabIndex={-1}
               aria-label="Next month"
+              site="date-next-month"
+              data-pretable-date-next-month=""
               disabled={nextMonthDisabled}
               onClick={() => move(addDateValueMonths(active, 1))}
             >
               ›
-            </button>
+            </IconButton>
           </div>
           <div id={gridId} role="grid" aria-label={monthLabel(active)}>
             <div role="row" data-pretable-date-weekdays="">
@@ -247,8 +270,11 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
                           ? undefined
                           : day.iso === state.selected
                       }
-                      aria-disabled={day.disabled || undefined}
+                      aria-disabled={pending || day.disabled || undefined}
                       data-pretable-date-day=""
+                      data-pretable-date-active={
+                        day.iso === active ? "" : undefined
+                      }
                       data-pretable-date-outside={day.inMonth ? undefined : ""}
                       data-pretable-date-today={
                         day.iso === today ? "" : undefined

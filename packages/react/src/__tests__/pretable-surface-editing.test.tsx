@@ -797,3 +797,24 @@ describe("editing × row grouping", () => {
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
 });
+
+it.each(["native", "lifecycle", "legacy"])(
+  "does not enter editing during %s composition, then accepts the next command",
+  (signal) => {
+    renderGrid();
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    if (signal === "lifecycle") fireEvent.compositionStart(cell);
+    expect(
+      fireEvent.keyDown(cell, {
+        key: "Enter",
+        isComposing: signal === "native",
+        keyCode: signal === "legacy" ? 229 : 13,
+      }),
+    ).toBe(true);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    if (signal === "lifecycle") fireEvent.compositionEnd(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+  },
+);

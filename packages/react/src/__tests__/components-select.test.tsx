@@ -226,7 +226,7 @@ describe("PretableSelect", () => {
     expect(document.querySelector("[data-pretable-listbox]")).toBeNull();
   });
 
-  test("warns in development on an empty accessible name", () => {
+  test("warns once on an empty accessible name", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(
       <PretableSelect

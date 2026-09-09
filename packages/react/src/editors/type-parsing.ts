@@ -1,6 +1,7 @@
 import type { ColumnOption, ColumnType } from "@pretable/core";
 import { isValidDateValue } from "@pretable-internal/calendar-date";
 
+import { isEnumChoice } from "./enum-draft";
 import { matchOption } from "./enum-options";
 
 export type DraftParseResult =
@@ -25,6 +26,11 @@ export function parseDraftForType(
     }
     case "enum": {
       const options = column.options ?? [];
+      if (isEnumChoice(draft)) {
+        return options.some((option) => option.value === draft.value)
+          ? { ok: true, value: draft.value }
+          : { ok: false, message: "Pick an option" };
+      }
       // An enum column without options behaves as a plain text column.
       if (options.length === 0) return { ok: true, value: draft };
       const raw = String(draft ?? "").trim();

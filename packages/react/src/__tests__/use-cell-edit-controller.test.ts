@@ -1,3 +1,4 @@
+import { enumChoice } from "../editors/enum-draft";
 import { describe, expect, it, vi } from "vitest";
 
 import type { PretableColumn } from "@pretable/core";
@@ -710,4 +711,34 @@ describe("async parser recovery", () => {
     );
     expect(grid.getSnapshot().editing).toBeNull();
   });
+});
+
+it("hands a canonical enum choice string to a custom parser", async () => {
+  const parseEditValue = vi.fn((value) => `parsed:${value}`);
+  const { controller, grid, onCommit } = setup({
+    type: "enum",
+    options: [
+      { value: "one", label: "Same" },
+      { value: "two", label: "Same" },
+    ],
+    parseEditValue,
+  });
+  await controller.begin({ rowId: "r1", columnId: "name" });
+  grid.setEditDraft(enumChoice("two"));
+  await controller.commit();
+  expect(parseEditValue).toHaveBeenCalledWith("two", expect.anything());
+  expect(onCommit).toHaveBeenCalledWith(
+    expect.objectContaining({ value: "parsed:two" }),
+  );
+});
+it("rejects a canonical enum choice removed before commit", async () => {
+  const { controller, grid, onCommit } = setup({
+    type: "enum",
+    options: [{ value: "one", label: "Same" }],
+  });
+  await controller.begin({ rowId: "r1", columnId: "name" });
+  grid.setEditDraft(enumChoice("two"));
+  await controller.commit();
+  expect(onCommit).not.toHaveBeenCalled();
+  expect(grid.getSnapshot().editing?.error).toBe("Pick an option");
 });

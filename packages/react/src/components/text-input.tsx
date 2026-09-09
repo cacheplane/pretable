@@ -7,10 +7,8 @@
  * needs from this control is only the box, which `@pretable/ui`'s grid.css
  * draws through `data-pretable-text-input`.
  *
- * So there is no wrapper element, no clear button and no debounce here: the
- * three chrome fields that use it — the filter value, the filter row's value
- * and the tool panel's search — each own their own value semantics, and a
- * component that owned them for all three would be wrong for two.
+ * Chrome fields and cell editors own their value and commit semantics.
+ * This control adds no wrapper, clear button, or debounce.
  *
  * A site's own attribute (`data-pretable-filter-value`) still arrives through
  * the spread, so nothing that identified a field before this component stops
@@ -52,7 +50,7 @@ export interface PretableTextInputProps extends Omit<
 }
 
 /**
- * A text field in the grid's own chrome.
+ * A native text field for grid chrome and cell editors.
  *
  * `type`, `inputMode`, `value`, `onChange`, `className`, `style` and every
  * other input attribute pass straight through — this is the native element,

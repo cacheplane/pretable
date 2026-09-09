@@ -419,6 +419,7 @@ import {
   parseTsv,
   type RejectedPasteCell,
 } from "./paste";
+import { useCompositionGuard } from "./editors/editor-keyboard";
 import { parseDraftForType } from "./editors/type-parsing";
 import { deriveRowChange } from "./row-change";
 import {
@@ -2217,6 +2218,7 @@ export function PretableSurface<
     [messages],
   );
   const resolvedComponents = useResolvedComponents(components);
+  const composition = useCompositionGuard();
   // The surface draws two checkboxes itself — the header select-all and the
   // row-select cell. Read off the resolved map rather than through
   // `usePretableComponents()`: this component is the one that PROVIDES that
@@ -5999,7 +6001,10 @@ export function PretableSurface<
         );
         emitFocusChange(entryRow.ref, columnId);
       }}
+      onCompositionStartCapture={composition.onCompositionStart}
+      onCompositionEndCapture={composition.onCompositionEnd}
       onKeyDown={(event) => {
+        if (composition.isComposing(event)) return;
         // Esc during reorder drag cancels without engine mutation.
         if (
           (event.key === "Escape" || event.key === "Esc") &&

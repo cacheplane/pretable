@@ -86,7 +86,7 @@ describe("PretableTextInput", () => {
     expect(input).toBeDisabled();
   });
 
-  test("warns in development when nothing can name it; silent for aria-label, aria-labelledby, or a label-for", () => {
+  test("warns once when nothing can name it; silent for aria-label, aria-labelledby, or a label-for", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     render(<PretableTextInput />);

@@ -1,10 +1,12 @@
+import { usePretableComponents } from "../components/context";
 import { createElement, useLayoutEffect } from "react";
 
 import type { PretableEditorInput } from "../types";
 import { useEditorField } from "./use-editor-field";
 
 export function MultilineCellEditor({ input }: { input: PretableEditorInput }) {
-  const { ref, pending, fieldProps } =
+  const { Textarea } = usePretableComponents();
+  const { ref, attachRef, pending, fieldProps, isComposing } =
     useEditorField<HTMLTextAreaElement>(input);
 
   // Auto-grow with the draft; the skin caps growth via max-height.
@@ -13,11 +15,12 @@ export function MultilineCellEditor({ input }: { input: PretableEditorInput }) {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [ref, input.draft]);
+  });
 
   return (
-    <textarea
-      ref={ref}
+    <Textarea
+      site="cell-editor"
+      ref={attachRef}
       className="pretable-cell-editor"
       data-pretable-multiline-editor=""
       rows={1}
@@ -27,6 +30,7 @@ export function MultilineCellEditor({ input }: { input: PretableEditorInput }) {
       }}
       {...fieldProps}
       onKeyDown={(e) => {
+        if (isComposing(e)) return;
         if (e.key === "Enter" && !(e.metaKey || e.ctrlKey)) {
           // Plain Enter = newline: keep the default, stop the grid handler.
           e.stopPropagation();

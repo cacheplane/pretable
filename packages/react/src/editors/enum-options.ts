@@ -6,8 +6,8 @@ export function optionLabel(option: ColumnOption): string {
 }
 
 /**
- * The option a typed string selects: an exact (case-insensitive) label match
- * first, then an exact value match. Blank text selects nothing.
+ * Typed text resolves only when label/value matches identify one distinct
+ * value. Blank or ambiguous text selects nothing.
  */
 export function matchOption(
   options: readonly ColumnOption[],
@@ -15,10 +15,14 @@ export function matchOption(
 ): ColumnOption | undefined {
   const needle = text.trim().toLowerCase();
   if (needle === "") return undefined;
-  return (
-    options.find((o) => optionLabel(o).toLowerCase() === needle) ??
-    options.find((o) => o.value.toLowerCase() === needle)
+  const matches = options.filter(
+    (option) =>
+      optionLabel(option).toLowerCase() === needle ||
+      option.value.toLowerCase() === needle,
   );
+  return new Set(matches.map((option) => option.value)).size === 1
+    ? matches[0]
+    : undefined;
 }
 
 /** Typeahead filter: substring over label and value. Blank text keeps all. */

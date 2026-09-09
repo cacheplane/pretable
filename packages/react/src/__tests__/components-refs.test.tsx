@@ -5,12 +5,19 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { PretableCheckbox } from "../components/checkbox";
 import { PretableSelect } from "../components/select";
+import { PretableTextarea } from "../components/textarea";
 import { PretableTextInput } from "../components/text-input";
 
 afterEach(cleanup);
 
 type ConsumerRef = (node: HTMLElement | null) => void | (() => void);
 const controls = [
+  {
+    name: "Textarea",
+    render: (ref: ConsumerRef) => (
+      <PretableTextarea aria-label="Text" ref={ref} />
+    ),
+  },
   {
     name: "Checkbox",
     render: (ref: ConsumerRef) => (

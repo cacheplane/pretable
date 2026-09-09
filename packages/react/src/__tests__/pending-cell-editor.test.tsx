@@ -47,7 +47,9 @@ it.each(["checking", "validating", "saving"] as const)(
         </form>,
       );
       const box = screen.getByRole(
-        column.type === "enum" ? "combobox" : "textbox",
+        column.type === "enum" || column.type === "date"
+          ? "combobox"
+          : "textbox",
       );
       expect(box).toHaveAttribute("readonly");
       expect(box).toHaveAttribute("aria-busy", "true");
@@ -93,7 +95,7 @@ it.each(["checking", "validating", "saving"] as const)(
     expect(parent).not.toHaveBeenCalled();
   },
 );
-it("normalizes enum only after permission, once across subsequent error resets", () => {
+it("does not rewrite enum identity during permission or error transitions", () => {
   const props = input({
     status: "checking",
     column: { id: "value", type: "enum", options },
@@ -107,7 +109,7 @@ it("normalizes enum only after permission, once across subsequent error resets",
   );
   expect(props.setDraft).not.toHaveBeenCalled();
   rerender(<CellEditor input={{ ...props, status: "editing" }} />);
-  expect(props.setDraft).toHaveBeenCalledExactlyOnceWith("Queued");
+  expect(props.setDraft).not.toHaveBeenCalled();
   for (const status of [
     "validating",
     "editing",
@@ -117,7 +119,7 @@ it("normalizes enum only after permission, once across subsequent error resets",
   ] as const) {
     rerender(<CellEditor input={{ ...props, status, draft: "done" }} />);
   }
-  expect(props.setDraft).toHaveBeenCalledTimes(1);
+  expect(props.setDraft).not.toHaveBeenCalled();
 });
 it("does not normalize a user correction after a permission error", () => {
   const props = input({

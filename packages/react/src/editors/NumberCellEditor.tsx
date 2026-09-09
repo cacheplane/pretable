@@ -1,3 +1,4 @@
+import { usePretableComponents } from "../components/context";
 import { createElement } from "react";
 
 import type { PretableEditorInput } from "../types";
@@ -12,7 +13,9 @@ function stepDraft(draft: unknown, step: number, dir: 1 | -1): string {
 }
 
 export function NumberCellEditor({ input }: { input: PretableEditorInput }) {
-  const { ref, pending, fieldProps } = useEditorField<HTMLInputElement>(input);
+  const { TextInput, IconButton } = usePretableComponents();
+  const { attachRef, pending, fieldProps, isComposing } =
+    useEditorField<HTMLInputElement>(input);
   const step = input.column.step ?? 1;
   const bump = (dir: 1 | -1) => {
     if (!pending) input.setDraft(stepDraft(input.draft, step, dir));
@@ -20,8 +23,9 @@ export function NumberCellEditor({ input }: { input: PretableEditorInput }) {
 
   return (
     <span data-pretable-number-editor="">
-      <input
-        ref={ref}
+      <TextInput
+        site="cell-editor"
+        ref={attachRef}
         className="pretable-cell-editor"
         inputMode="decimal"
         value={String(input.draft ?? "")}
@@ -30,6 +34,7 @@ export function NumberCellEditor({ input }: { input: PretableEditorInput }) {
         }}
         {...fieldProps}
         onKeyDown={(e) => {
+          if (isComposing(e)) return;
           if (e.key === "ArrowUp" || e.key === "ArrowDown") {
             e.preventDefault();
             e.stopPropagation();
@@ -55,22 +60,26 @@ export function NumberCellEditor({ input }: { input: PretableEditorInput }) {
         data-pretable-number-steppers=""
         onMouseDown={(e) => e.preventDefault()}
       >
-        <button
-          type="button"
+        <IconButton
           tabIndex={-1}
           aria-label="Increment"
+          site="number-increment"
+          data-pretable-number-increment=""
+          disabled={pending}
           onClick={() => bump(1)}
         >
           ▲
-        </button>
-        <button
-          type="button"
+        </IconButton>
+        <IconButton
           tabIndex={-1}
           aria-label="Decrement"
+          site="number-decrement"
+          data-pretable-number-decrement=""
+          disabled={pending}
           onClick={() => bump(-1)}
         >
           ▼
-        </button>
+        </IconButton>
       </span>
     </span>
   );

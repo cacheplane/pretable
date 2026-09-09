@@ -3,12 +3,9 @@
  * cell, the column toggle and the boolean cell already used, now one
  * component for every site — the three native inputs included.
  *
- * A button rather than a styled native input because mixed state, the roving
- * tabindex in body cells and a glyph that takes the theme's tokens are all
- * plain on a button and a fight on an `<input>`: `indeterminate` is a DOM
- * property with no attribute, `tabindex="-1"` on an input still leaves a
- * focusable box in the tab order's way when it is re-enabled, and the tick is
- * the user agent's until `appearance: none` throws the whole control away.
+ * The button preserves the grid's existing Space/Enter activation and themed
+ * mixed-state glyphs. Native checkbox inputs also support tabIndex=-1 and
+ * indeterminate state; this choice keeps the kit's existing interaction model.
  *
  * Styled by `@pretable/ui`'s grid.css through `data-pretable-checkbox` and
  * `aria-checked`; a site's own attribute (`data-pretable-row-select`) still

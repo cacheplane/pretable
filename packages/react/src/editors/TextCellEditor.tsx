@@ -1,13 +1,17 @@
+import { usePretableComponents } from "../components/context";
 import { createElement } from "react";
 
 import type { PretableEditorInput } from "../types";
 import { useEditorField } from "./use-editor-field";
 
 export function TextCellEditor({ input }: { input: PretableEditorInput }) {
-  const { ref, pending, fieldProps } = useEditorField<HTMLInputElement>(input);
+  const { TextInput } = usePretableComponents();
+  const { attachRef, pending, fieldProps } =
+    useEditorField<HTMLInputElement>(input);
   return (
-    <input
-      ref={ref}
+    <TextInput
+      site="cell-editor"
+      ref={attachRef}
       className="pretable-cell-editor"
       value={String(input.draft ?? "")}
       onChange={(e) => {

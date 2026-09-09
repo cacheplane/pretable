@@ -208,7 +208,7 @@ describe("PretableCheckbox", () => {
     expect(onCheckedChange).toHaveBeenCalledWith(true);
   });
 
-  test("warns in development when nothing names it, and not when a label or aria-label does", () => {
+  test("warns once when nothing names it, and not when a label or aria-label does", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const bare = render(

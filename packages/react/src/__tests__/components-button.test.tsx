@@ -137,7 +137,7 @@ describe("PretableIconButton", () => {
     expect(ref.current).toHaveAttribute("data-pretable-filter-funnel", "");
   });
 
-  test("warns in development when the accessible name is empty", () => {
+  test("warns once when the accessible name is empty", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(<PretableIconButton aria-label="   " />);
     expect(warn).toHaveBeenCalledTimes(1);
@@ -236,6 +236,7 @@ describe("components context", () => {
       ComponentProps<typeof PretableIconButton>
     >((props, ref) => <button {...props} ref={ref} data-mine="" />);
     const value = {
+      ...DEFAULT_COMPONENTS,
       Button: PretableButton,
       IconButton: MyIcon,
       Select: PretableSelect,

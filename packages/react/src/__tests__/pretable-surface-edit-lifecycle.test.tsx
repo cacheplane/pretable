@@ -30,7 +30,7 @@ function begin() {
   fireEvent.keyDown(cell, { key: "Enter" });
 }
 it.each([true, false])(
-  "enum waits for deferred permission %s before normalizing or saving",
+  "enum waits for deferred permission %s before saving",
   async (allowed) => {
     const permission = deferred<boolean>();
     const save = vi.fn();
@@ -56,10 +56,10 @@ it.each([true, false])(
     );
     begin();
     const box = screen.getByRole("combobox");
-    expect(box).toHaveValue("queued");
+    expect(box).toHaveValue("Queued");
     fireEvent.keyDown(box, { key: "Enter" });
     fireEvent.click(screen.getByRole("option", { name: "Done" }));
-    expect(box).toHaveValue("queued");
+    expect(box).toHaveValue("Queued");
     expect(save).not.toHaveBeenCalled();
     await act(async () => {
       permission.resolve(allowed);

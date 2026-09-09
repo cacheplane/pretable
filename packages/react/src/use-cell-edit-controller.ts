@@ -10,6 +10,7 @@ import type { PretableColumn, PretableEditInput } from "./types";
 
 import { warnOnce } from "./dev-warn";
 
+import { enumDraftText } from "./editors/enum-draft";
 import { parseDraftForType } from "./editors/type-parsing";
 
 declare const cellEditAuthorizationBrand: unique symbol;
@@ -237,7 +238,10 @@ export function createCellEditController<
         if (!current(s)) return;
         let value: unknown;
         if (input.column.parseEditValue) {
-          value = await input.column.parseEditValue(String(draft ?? ""), input);
+          value = await input.column.parseEditValue(
+            enumDraftText(draft),
+            input,
+          );
         } else if (
           input.column.type === "date" &&
           draft === null &&

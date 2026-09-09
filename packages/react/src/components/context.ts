@@ -8,9 +8,9 @@
  * branch on `site` to treat one place differently. No per-site public names:
  * the API does not grow a name for every control the grid gains.
  *
- * CONTEXT, not props. pretable portals its popovers — the filter dialog, the
- * column menus — into document.body. Context crosses a portal; props do not,
- * and the popovers are exactly where an override matters most. The value is
+ * Context avoids threading replacement props through every intermediate
+ * component, including portaled menus. Both props and React context work
+ * across portals. The value is
  * resolved once at the surface and memoised on the identity of each slot, so
  * an inline `{{ Button: MyButton }}` literal does not re-render every button
  * on every keystroke.
@@ -35,6 +35,7 @@ import {
 import { PretableCheckbox, type PretableCheckboxProps } from "./checkbox";
 import { PretableSelect, type PretableSelectProps } from "./select";
 import { PretableTextInput, type PretableTextInputProps } from "./text-input";
+import { PretableTextarea, type PretableTextareaProps } from "./textarea";
 
 /**
  * The component a `components.Button` replacement must be: it receives
@@ -74,14 +75,19 @@ export type PretableSelectComponent = ComponentType<
 /**
  * The component a `components.TextInput` replacement must be: it receives
  * {@link PretableTextInputProps} and forwards its `ref` to the input node —
- * the handle a caller reaches the real field through. The grid takes no ref
- * to a field today; the ref is the contract a replacement owes, not a live
- * caller.
+ * editors use that node for focus, selection, and popup anchoring.
  *
  * @public
  */
 export type PretableTextInputComponent = ComponentType<
   PretableTextInputProps & RefAttributes<HTMLInputElement>
+>;
+
+/** A multiline field replacement must forward its ref to the textarea node.
+ * @public
+ */
+export type PretableTextareaComponent = ComponentType<
+  PretableTextareaProps & RefAttributes<HTMLTextAreaElement>
 >;
 
 /**
@@ -109,8 +115,10 @@ export interface PretableComponents {
   readonly IconButton?: PretableIconButtonComponent;
   /** Every select-only picker the grid draws; receives {@link PretableSelectProps}. */
   readonly Select?: PretableSelectComponent;
-  /** Every chrome text field the grid draws — the filter value, the filter row's value and the tool panel's search; receives {@link PretableTextInputProps}. */
+  /** Every single-line field in grid chrome and cell editors; receives {@link PretableTextInputProps}. */
   readonly TextInput?: PretableTextInputComponent;
+  /** Multiline cell editor fields; receives {@link PretableTextareaProps}. */
+  readonly Textarea?: PretableTextareaComponent;
   /** Every checkbox the grid draws — the row-select cells, the column toggles, the boolean cell, the checklists; receives {@link PretableCheckboxProps}. */
   readonly Checkbox?: PretableCheckboxComponent;
 }
@@ -121,6 +129,7 @@ export interface ResolvedPretableComponents {
   readonly IconButton: PretableIconButtonComponent;
   readonly Select: PretableSelectComponent;
   readonly TextInput: PretableTextInputComponent;
+  readonly Textarea: PretableTextareaComponent;
   readonly Checkbox: PretableCheckboxComponent;
 }
 
@@ -130,6 +139,7 @@ export const DEFAULT_COMPONENTS: ResolvedPretableComponents = Object.freeze({
   IconButton: PretableIconButton,
   Select: PretableSelect,
   TextInput: PretableTextInput,
+  Textarea: PretableTextarea,
   Checkbox: PretableCheckbox,
 });
 
@@ -158,6 +168,7 @@ export function useResolvedComponents(
   const IconButton = components?.IconButton ?? DEFAULT_COMPONENTS.IconButton;
   const Select = components?.Select ?? DEFAULT_COMPONENTS.Select;
   const TextInput = components?.TextInput ?? DEFAULT_COMPONENTS.TextInput;
+  const Textarea = components?.Textarea ?? DEFAULT_COMPONENTS.Textarea;
   const Checkbox = components?.Checkbox ?? DEFAULT_COMPONENTS.Checkbox;
   return useMemo(
     () =>
@@ -165,9 +176,17 @@ export function useResolvedComponents(
       IconButton === DEFAULT_COMPONENTS.IconButton &&
       Select === DEFAULT_COMPONENTS.Select &&
       TextInput === DEFAULT_COMPONENTS.TextInput &&
+      Textarea === DEFAULT_COMPONENTS.Textarea &&
       Checkbox === DEFAULT_COMPONENTS.Checkbox
         ? DEFAULT_COMPONENTS
-        : Object.freeze({ Button, IconButton, Select, TextInput, Checkbox }),
-    [Button, IconButton, Select, TextInput, Checkbox],
+        : Object.freeze({
+            Button,
+            IconButton,
+            Select,
+            TextInput,
+            Textarea,
+            Checkbox,
+          }),
+    [Button, IconButton, Select, TextInput, Textarea, Checkbox],
   );
 }
