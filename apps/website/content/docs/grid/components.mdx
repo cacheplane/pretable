@@ -13,8 +13,10 @@ and popup menus. Choose the customization level that matches your task:
 | Replace a control while keeping the grid's behavior   | The [`components` prop](#replacing-a-component)                             |
 | Build a different editor, such as a date-range picker | Column [`renderEditor`](/docs/grid/editing#custom-editors)                  |
 
-The kit is exported from `@pretable/react`. For the default appearance, load
-the `@pretable/ui` skin as described in [Getting started](/docs).
+The kit is exported from `@pretable/react`. These examples assume you have
+imported an `@pretable/ui` theme and the grid skin once at your app’s entry point,
+as shown in [Import the styles](/docs#import-the-styles). Each preview has a
+Code tab with the complete component source.
 
 ## Replacing a component
 
@@ -111,6 +113,8 @@ which the built-in controls emit as `data-pretable-site`.
 A labelled action. `variant="ghost"` (the default) uses a hover tint;
 `variant="link"` uses plain accent text. Other props are native button props.
 
+<Example id="kit-button" />
+
 | Prop      | Type                | Meaning                       |
 | --------- | ------------------- | ----------------------------- |
 | `variant` | `"ghost" \| "link"` | Appearance; defaults to ghost |
@@ -120,6 +124,8 @@ A labelled action. `variant="ghost"` (the default) uses a hover tint;
 
 An icon-only action. Supply its icon as children and a nonempty `aria-label`
 describing the action, such as `Next month`. The label is required by its type.
+
+<Example id="kit-icon-button" />
 
 | Prop         | Type           | Meaning                  |
 | ------------ | -------------- | ------------------------ |
@@ -132,20 +138,7 @@ A controlled select-only combobox with a button trigger and a portalled
 listbox. It differs from the [editable enum editor](/docs/grid/editing#enums),
 which accepts typed queries in a text field.
 
-```tsx
-import { PretableSelect } from "@pretable/react";
-
-<PretableSelect
-  aria-label="Filter operator"
-  options={[
-    { value: "contains", label: "Contains" },
-    { value: "equals", label: "Equals" },
-    { value: "regex", label: "Matches regex", disabled: true },
-  ]}
-  value={operator}
-  onChange={setOperator}
-/>;
-```
+<Example id="kit-select" />
 
 | Prop         | Type                              | Meaning                                                                                            |
 | ------------ | --------------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -181,14 +174,7 @@ closed when options are added again.
 only `site` and the `data-pretable-text-input` styling hook. Debouncing, parsing,
 and commit behavior belong to the caller.
 
-```tsx
-<PretableTextInput
-  aria-label="Filter value"
-  type="date"
-  value={value}
-  onChange={(event) => setValue(event.target.value)}
-/>
-```
+<Example id="kit-text-input" />
 
 | Prop   | Type           | Meaning                                                 |
 | ------ | -------------- | ------------------------------------------------------- |
@@ -201,6 +187,8 @@ contract as TextInput. It emits `data-pretable-textarea`. The multiline editor
 handles auto-grow and commit keys; the shared control forwards native props
 such as `rows`, `value`, and `onChange`.
 
+<Example id="kit-textarea" />
+
 | Prop   | Type           | Meaning                                                    |
 | ------ | -------------- | ---------------------------------------------------------- |
 | `site` | `PretableSite` | Placement name; other props are native textarea attributes |
@@ -210,14 +198,7 @@ such as `rows`, `value`, and `onChange`.
 A controlled `<button role="checkbox">` with `aria-checked` set to `true`,
 `false`, or `mixed`. Space and Enter activate it through the native click.
 
-```tsx
-import { PretableCheckbox } from "@pretable/react";
-
-<label>
-  <PretableCheckbox checked={hideGrouped} onCheckedChange={setHideGrouped} />
-  Hide grouped columns
-</label>;
-```
+<Example id="kit-checkbox" />
 
 | Prop              | Type                      | Meaning                                                   |
 | ----------------- | ------------------------- | --------------------------------------------------------- |

@@ -30,6 +30,12 @@ import headlessDistinctValuesDemo from "../../../content/examples/headless-disti
 import headlessRebuildProgressDemo from "../../../content/examples/headless-rebuild-progress/demo";
 import headlessTransactionsDemo from "../../../content/examples/headless-transactions/demo";
 import keyboardNavigationDemo from "../../../content/examples/keyboard-navigation/demo";
+import kitButtonDemo from "../../../content/examples/kit-button/demo";
+import kitCheckboxDemo from "../../../content/examples/kit-checkbox/demo";
+import kitIconButtonDemo from "../../../content/examples/kit-icon-button/demo";
+import kitSelectDemo from "../../../content/examples/kit-select/demo";
+import kitTextInputDemo from "../../../content/examples/kit-text-input/demo";
+import kitTextareaDemo from "../../../content/examples/kit-textarea/demo";
 import liveEventsGridDemo from "../../../content/examples/live-events-grid/demo";
 import multiColumnSortDemo from "../../../content/examples/multi-column-sort/demo";
 import numberFormattingDemo from "../../../content/examples/number-formatting/demo";
@@ -76,6 +82,12 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "headless-rebuild-progress": headlessRebuildProgressDemo,
   "headless-transactions": headlessTransactionsDemo,
   "keyboard-navigation": keyboardNavigationDemo,
+  "kit-button": kitButtonDemo,
+  "kit-checkbox": kitCheckboxDemo,
+  "kit-icon-button": kitIconButtonDemo,
+  "kit-select": kitSelectDemo,
+  "kit-text-input": kitTextInputDemo,
+  "kit-textarea": kitTextareaDemo,
   "live-events-grid": liveEventsGridDemo,
   "multi-column-sort": multiColumnSortDemo,
   "number-formatting": numberFormattingDemo,
