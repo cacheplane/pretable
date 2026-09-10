@@ -27,6 +27,12 @@ import headlessDistinctValues from "../../../content/examples/headless-distinct-
 import headlessRebuildProgress from "../../../content/examples/headless-rebuild-progress/example";
 import headlessTransactions from "../../../content/examples/headless-transactions/example";
 import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
+import kitButton from "../../../content/examples/kit-button/example";
+import kitCheckbox from "../../../content/examples/kit-checkbox/example";
+import kitIconButton from "../../../content/examples/kit-icon-button/example";
+import kitSelect from "../../../content/examples/kit-select/example";
+import kitTextInput from "../../../content/examples/kit-text-input/example";
+import kitTextarea from "../../../content/examples/kit-textarea/example";
 import liveEventsGrid from "../../../content/examples/live-events-grid/example";
 import multiColumnSort from "../../../content/examples/multi-column-sort/example";
 import numberFormatting from "../../../content/examples/number-formatting/example";
@@ -144,6 +150,30 @@ export const exampleRegistry = {
   },
   "keyboard-navigation": {
     meta: keyboardNavigation,
+    hasDemo: true,
+  },
+  "kit-button": {
+    meta: kitButton,
+    hasDemo: true,
+  },
+  "kit-checkbox": {
+    meta: kitCheckbox,
+    hasDemo: true,
+  },
+  "kit-icon-button": {
+    meta: kitIconButton,
+    hasDemo: true,
+  },
+  "kit-select": {
+    meta: kitSelect,
+    hasDemo: true,
+  },
+  "kit-text-input": {
+    meta: kitTextInput,
+    hasDemo: true,
+  },
+  "kit-textarea": {
+    meta: kitTextarea,
     hasDemo: true,
   },
   "live-events-grid": {
