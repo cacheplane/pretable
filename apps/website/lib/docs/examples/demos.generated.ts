@@ -17,6 +17,7 @@ import customCellEditorDemo from "../../../content/examples/custom-cell-editor/d
 import customThemeDemo from "../../../content/examples/custom-theme/demo";
 import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
 import dataStateLifecycleDemo from "../../../content/examples/data-state-lifecycle/demo";
+import dateFormattingDemo from "../../../content/examples/date-formatting/demo";
 import deepCssOverrideDemo from "../../../content/examples/deep-css-override/demo";
 import densityHelpersDemo from "../../../content/examples/density-helpers/demo";
 import densityToggleLiveDemo from "../../../content/examples/density-toggle-live/demo";
@@ -42,6 +43,10 @@ import numberFormattingDemo from "../../../content/examples/number-formatting/de
 import overviewGridDemo from "../../../content/examples/overview-grid/demo";
 import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
 import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
+import presentationBadgeDemo from "../../../content/examples/presentation-badge/demo";
+import presentationDeltaDemo from "../../../content/examples/presentation-delta/demo";
+import presentationEntityDemo from "../../../content/examples/presentation-entity/demo";
+import presentationStatusDemo from "../../../content/examples/presentation-status/demo";
 import pretableDropInDemo from "../../../content/examples/pretable-drop-in/demo";
 import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
 import serverDataOverviewDemo from "../../../content/examples/server-data-overview/demo";
@@ -69,6 +74,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "custom-theme": customThemeDemo,
   "dark-mode-toggle": darkModeToggleDemo,
   "data-state-lifecycle": dataStateLifecycleDemo,
+  "date-formatting": dateFormattingDemo,
   "deep-css-override": deepCssOverrideDemo,
   "density-helpers": densityHelpersDemo,
   "density-toggle-live": densityToggleLiveDemo,
@@ -94,6 +100,10 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "overview-grid": overviewGridDemo,
   "partial-row-stream": partialRowStreamDemo,
   "paste-geometry": pasteGeometryDemo,
+  "presentation-badge": presentationBadgeDemo,
+  "presentation-delta": presentationDeltaDemo,
+  "presentation-entity": presentationEntityDemo,
+  "presentation-status": presentationStatusDemo,
   "pretable-drop-in": pretableDropInDemo,
   "range-selection": rangeSelectionDemo,
   "server-data-overview": serverDataOverviewDemo,
