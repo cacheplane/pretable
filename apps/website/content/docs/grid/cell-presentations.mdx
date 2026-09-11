@@ -35,6 +35,10 @@ The same `formattedValue` handoff works for canonical dates configured with
 do not change the raw-value contract or the formatting precedence; they only
 render the already-resolved text and application semantics.
 
+The focused examples below use the same shared theme and grid styles. Import
+them once in your app as shown in [Import the styles](/docs#import-the-styles).
+Each Code tab contains a complete component you can copy.
+
 ## The shared span contract
 
 Every one of these props interfaces extends
@@ -52,37 +56,7 @@ cannot override them with something the value disagrees with.
 A signed numeric change: your formatted text, tinted by direction and prefixed
 with a direction marker.
 
-```tsx
-import {
-  numberFormats,
-  PretableDelta,
-  type PretableColumn,
-} from "@pretable/react";
-
-interface Position extends Record<string, unknown> {
-  id: string;
-  symbol: string;
-  name: string;
-  dayPnl: number;
-  settled: boolean;
-  settlementState: string;
-  flag: "risk" | "watch";
-}
-
-const columns: PretableColumn<Position>[] = [
-  {
-    id: "dayPnl",
-    header: "Day P&L",
-    numberFormat: numberFormats.money({
-      currency: "USD",
-      signDisplay: "always",
-    }),
-    render: ({ row, formattedValue }) => (
-      <PretableDelta value={row.dayPnl}>{formattedValue}</PretableDelta>
-    ),
-  },
-];
-```
+<Example id="presentation-delta" />
 
 | Prop       | Type        | Required | Description                                                                                                 |
 | ---------- | ----------- | -------- | ----------------------------------------------------------------------------------------------------------- |
@@ -92,8 +66,9 @@ const columns: PretableColumn<Position>[] = [
 `value` is read for its sign and nothing else. Formatting is locale- and
 currency-dependent, so it stays your decision: the component never calls
 `toLocaleString` or `toFixed` on `value`, and never invents a string. Pass the
-display text as `children` — above, `formattedValue` is the string the column's
-`numberFormat` already produced.
+display text as `children` — the focused example uses `Intl.NumberFormat`. In
+the combined grid, `formattedValue` is the string the column's `numberFormat`
+already produced.
 
 The direction is `up` when `value > 0`, `down` when `value < 0`, and `flat`
 otherwise. Both comparisons are explicit so that the third case exists: zero is
@@ -111,19 +86,7 @@ the active theme picked.
 
 A state: a coloured dot followed by its label.
 
-```tsx
-import { PretableStatus, type PretableColumn } from "@pretable/react";
-
-const settlementColumn: PretableColumn<Position> = {
-  id: "settlementState",
-  header: "Settlement",
-  render: ({ row }) => (
-    <PretableStatus tone={row.settled ? "positive" : "warning"}>
-      {row.settlementState}
-    </PretableStatus>
-  ),
-};
-```
+<Example id="presentation-status" />
 
 | Prop       | Type                 | Required | Description                                              |
 | ---------- | -------------------- | -------- | -------------------------------------------------------- |
@@ -154,19 +117,7 @@ warn.
 A short label in a chip: a category, a flag, a state that is a noun rather than
 a measurement.
 
-```tsx
-import { PretableBadge, type PretableColumn } from "@pretable/react";
-
-const flagColumn: PretableColumn<Position> = {
-  id: "flag",
-  header: "Flag",
-  render: ({ row }) => (
-    <PretableBadge tone={row.flag === "risk" ? "negative" : "warning"}>
-      {row.flag}
-    </PretableBadge>
-  ),
-};
-```
+<Example id="presentation-badge" />
 
 | Prop       | Type                | Required | Description                                                                 |
 | ---------- | ------------------- | -------- | --------------------------------------------------------------------------- |
@@ -208,17 +159,7 @@ base rule is the neutral badge.
 An identity: a primary line with a quieter one beneath it, the shape almost
 every grid's first column takes.
 
-```tsx
-import { PretableEntity, type PretableColumn } from "@pretable/react";
-
-const symbolColumn: PretableColumn<Position> = {
-  id: "symbol",
-  header: "Position",
-  render: ({ row }) => (
-    <PretableEntity primary={row.symbol} secondary={row.name} />
-  ),
-};
-```
+<Example id="presentation-entity" />
 
 | Prop        | Type        | Required | Description                                     |
 | ----------- | ----------- | -------- | ----------------------------------------------- |

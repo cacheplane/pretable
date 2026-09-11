@@ -14,6 +14,7 @@ import customCellEditor from "../../../content/examples/custom-cell-editor/examp
 import customTheme from "../../../content/examples/custom-theme/example";
 import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
 import dataStateLifecycle from "../../../content/examples/data-state-lifecycle/example";
+import dateFormatting from "../../../content/examples/date-formatting/example";
 import deepCssOverride from "../../../content/examples/deep-css-override/example";
 import densityHelpers from "../../../content/examples/density-helpers/example";
 import densityToggleLive from "../../../content/examples/density-toggle-live/example";
@@ -39,6 +40,10 @@ import numberFormatting from "../../../content/examples/number-formatting/exampl
 import overviewGrid from "../../../content/examples/overview-grid/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
+import presentationBadge from "../../../content/examples/presentation-badge/example";
+import presentationDelta from "../../../content/examples/presentation-delta/example";
+import presentationEntity from "../../../content/examples/presentation-entity/example";
+import presentationStatus from "../../../content/examples/presentation-status/example";
 import pretableDropIn from "../../../content/examples/pretable-drop-in/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
 import serverDataOverview from "../../../content/examples/server-data-overview/example";
@@ -98,6 +103,10 @@ export const exampleRegistry = {
   },
   "data-state-lifecycle": {
     meta: dataStateLifecycle,
+    hasDemo: true,
+  },
+  "date-formatting": {
+    meta: dateFormatting,
     hasDemo: true,
   },
   "deep-css-override": {
@@ -198,6 +207,22 @@ export const exampleRegistry = {
   },
   "paste-geometry": {
     meta: pasteGeometry,
+    hasDemo: true,
+  },
+  "presentation-badge": {
+    meta: presentationBadge,
+    hasDemo: true,
+  },
+  "presentation-delta": {
+    meta: presentationDelta,
+    hasDemo: true,
+  },
+  "presentation-entity": {
+    meta: presentationEntity,
+    hasDemo: true,
+  },
+  "presentation-status": {
+    meta: presentationStatus,
     hasDemo: true,
   },
   "pretable-drop-in": {

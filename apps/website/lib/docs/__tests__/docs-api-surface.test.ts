@@ -2370,7 +2370,6 @@ const FIXTURE_SUFFIX = ".types.tsx";
  * other roster in this file charges.
  */
 const FIXTURE_FILES = [
-  "cell-presentations.types.tsx",
   "csv-export.types.tsx",
   "date-formatting.types.tsx",
   "headless-getting-started.types.tsx",
@@ -2636,9 +2635,6 @@ const UNTRANSCRIBED_FENCES: Record<string, string> = {};
  * matches WITHOUT is a stale entry and fails.
  */
 const FENCE_RENAMES: Record<string, Record<string, string>> = {
-  // `cell-presentations.types.tsx` transcribes four fences into one module, and
-  // the `PretableDelta` one declares the generic `columns`.
-  "grid/cell-presentations.mdx#PretableDelta": { columns: "deltaColumns" },
   "grid/date-formatting.mdx#Explicit-model presentation": {
     column: "scheduleColumn",
   },
