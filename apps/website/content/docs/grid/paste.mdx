@@ -167,7 +167,16 @@ Both hooks are awaited, so async permission checks and async validation work her
   while skipped columns don't. This is the deliberate divergence.)
 </Callout>
 
-Because rejections are reported rather than swallowed, "N of M applied" is a one-liner:
+Try a mixed inventory update below. Copy the three quantities and paste into
+the first **Quantity** cell: `24` applies, `-5` fails the nonnegative rule, and
+`abc` fails number parsing. Pens and Folders keep their previous quantities,
+with a reason shown for each rejected value. Choose **Use corrected values**,
+then copy and paste again to apply all three rows.
+
+<Example id="paste-validation" />
+
+The example applies accepted cells by row id against current state and renders
+`rejected` as a readable list. A compact status summary uses the same payload:
 
 ```tsx
 <PretableSurface

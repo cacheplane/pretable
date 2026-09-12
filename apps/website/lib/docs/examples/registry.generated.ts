@@ -48,6 +48,7 @@ import numberFormatting from "../../../content/examples/number-formatting/exampl
 import overviewGrid from "../../../content/examples/overview-grid/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
+import pasteValidation from "../../../content/examples/paste-validation/example";
 import presentationBadge from "../../../content/examples/presentation-badge/example";
 import presentationDelta from "../../../content/examples/presentation-delta/example";
 import presentationEntity from "../../../content/examples/presentation-entity/example";
@@ -247,6 +248,10 @@ export const exampleRegistry = {
   },
   "paste-geometry": {
     meta: pasteGeometry,
+    hasDemo: true,
+  },
+  "paste-validation": {
+    meta: pasteValidation,
     hasDemo: true,
   },
   "presentation-badge": {
