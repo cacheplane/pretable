@@ -29,6 +29,7 @@ import editorMultilineDemo from "../../../content/examples/editor-multiline/demo
 import editorNumberDemo from "../../../content/examples/editor-number/demo";
 import editorTextDemo from "../../../content/examples/editor-text/demo";
 import exportCsvDemo from "../../../content/examples/export-csv/demo";
+import exportPreviewDemo from "../../../content/examples/export-preview/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import gridLevelRenderersDemo from "../../../content/examples/grid-level-renderers/demo";
 import groupExpansionControlDemo from "../../../content/examples/group-expansion-control/demo";
@@ -93,6 +94,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "editor-number": editorNumberDemo,
   "editor-text": editorTextDemo,
   "export-csv": exportCsvDemo,
+  "export-preview": exportPreviewDemo,
   "first-grid": firstGridDemo,
   "grid-level-renderers": gridLevelRenderersDemo,
   "group-expansion-control": groupExpansionControlDemo,

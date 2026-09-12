@@ -25,9 +25,9 @@
 
 ## 3. CSV export — blove/export-preview-example
 
-- [ ] Add `export-preview` example showing actual exported content from public API with selectable columns, headers, delimiter, and formatted output (the API has no raw/formatted toggle). Download must match preview using the same options and data.
-- [ ] Embed beside export options guidance in `apps/website/content/docs/grid/export.mdx`. Keep existing selected-row download demo.
-- [ ] Test meaningful CSV content changes, quoting, actual download content, source availability, and mobile fit.
+- [x] Add `export-preview` example showing actual exported content from public API with selectable columns, headers, delimiter, and formatted output (the API has no raw/formatted toggle). Download must match preview using the same options and data.
+- [x] Embed beside export options guidance in `apps/website/content/docs/grid/export.mdx`. Keep existing selected-row download demo.
+- [x] Test meaningful CSV content changes, quoting, actual download content, source availability, and mobile fit.
 - [ ] Review, validate, separate PR, green merge, production verification.
 
 ## 4. Paste — blove/paste-validation-example

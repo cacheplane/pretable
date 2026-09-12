@@ -26,6 +26,7 @@ import editorMultiline from "../../../content/examples/editor-multiline/example"
 import editorNumber from "../../../content/examples/editor-number/example";
 import editorText from "../../../content/examples/editor-text/example";
 import exportCsv from "../../../content/examples/export-csv/example";
+import exportPreview from "../../../content/examples/export-preview/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import gridLevelRenderers from "../../../content/examples/grid-level-renderers/example";
 import groupExpansionControl from "../../../content/examples/group-expansion-control/example";
@@ -158,6 +159,10 @@ export const exampleRegistry = {
   },
   "export-csv": {
     meta: exportCsv,
+    hasDemo: true,
+  },
+  "export-preview": {
+    meta: exportPreview,
     hasDemo: true,
   },
   "first-grid": {
