@@ -18,6 +18,12 @@ import dateFormatting from "../../../content/examples/date-formatting/example";
 import deepCssOverride from "../../../content/examples/deep-css-override/example";
 import densityHelpers from "../../../content/examples/density-helpers/example";
 import densityToggleLive from "../../../content/examples/density-toggle-live/example";
+import editorBoolean from "../../../content/examples/editor-boolean/example";
+import editorDate from "../../../content/examples/editor-date/example";
+import editorEnum from "../../../content/examples/editor-enum/example";
+import editorMultiline from "../../../content/examples/editor-multiline/example";
+import editorNumber from "../../../content/examples/editor-number/example";
+import editorText from "../../../content/examples/editor-text/example";
 import exportCsv from "../../../content/examples/export-csv/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import gridLevelRenderers from "../../../content/examples/grid-level-renderers/example";
@@ -119,6 +125,30 @@ export const exampleRegistry = {
   },
   "density-toggle-live": {
     meta: densityToggleLive,
+    hasDemo: true,
+  },
+  "editor-boolean": {
+    meta: editorBoolean,
+    hasDemo: true,
+  },
+  "editor-date": {
+    meta: editorDate,
+    hasDemo: true,
+  },
+  "editor-enum": {
+    meta: editorEnum,
+    hasDemo: true,
+  },
+  "editor-multiline": {
+    meta: editorMultiline,
+    hasDemo: true,
+  },
+  "editor-number": {
+    meta: editorNumber,
+    hasDemo: true,
+  },
+  "editor-text": {
+    meta: editorText,
     hasDemo: true,
   },
   "export-csv": {

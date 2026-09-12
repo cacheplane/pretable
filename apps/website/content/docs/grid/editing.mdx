@@ -122,13 +122,25 @@ const columns: PretableColumn<Task>[] = [
 ];
 ```
 
+### Single-line text
+
+A text column opens a single-line input by default. Double-click a cell, or focus
+it and press `Enter` or `F2`, to begin. `Enter` or `Tab` commits; `Escape`
+discards the draft. The saved value below the grid changes only after a commit.
+
+<Example id="editor-text" />
+
 ### Multi-line text
 
 A `wrap: true` text column edits in a textarea that auto-grows with the draft. `Enter` inserts a newline instead of committing; **`Cmd`/`Ctrl` + `Enter`** commits and moves down. `Tab` commits right and `Shift+Tab` left, `Escape` cancels, and blur commits in place.
 
+<Example id="editor-multiline" />
+
 ### Numbers
 
 `type: "number"` opens a right-aligned decimal input. `ArrowUp` / `ArrowDown` step the draft by `column.step` (default `1`), and a pair of clickable stepper buttons does the same — stepping edits the draft, it never commits. On commit, built-in parsing runs before your `validate`: a non-numeric draft is rejected with an inline **"Not a number"** and the editor stays open; an empty draft commits `null`.
+
+<Example id="editor-number" />
 
 ### Booleans
 
@@ -139,6 +151,8 @@ When a boolean commit fails — `validate` returned a string, or `onRowChange` t
 Non-boolean cell values are **coerced**, by the same rule the [boolean filter](/docs/grid/filtering) uses: `"true"` / `1` / `"1"` are checked, `"false"` / `0` / `"0"` are unchecked, and anything else falls back to plain truthiness. So a cell holding `1` renders checked, matches the **True** filter, and toggles to `false`. Storing real booleans is still the better idea — a commit always writes one, so the first edit converts the cell anyway.
 
 A boolean column may declare `options` to **relabel** its two states — `[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]` — but the values must stay `"true"` and `"false"`. Matching happens on the coerced boolean, which is only ever one of those two strings, so an option carrying any other `value` would render in the filter checklist and then match no rows.
+
+<Example id="editor-boolean" />
 
 ### Enums
 
@@ -157,6 +171,8 @@ For a creatable or multi-select control, use [`renderEditor`](#custom-editors).
 
 An `enum` column with **no** `options` gets the plain text editor and no strictness — the draft commits as typed.
 
+<Example id="editor-enum" />
+
 ### Dates
 
 `type: "date"` opens a strict `YYYY-MM-DD` text field with a month-grid calendar in a popover anchored to the cell. The calendar starts weeks on **Monday**, marks today and the currently highlighted day, and dims days from the neighbouring months. A commit always produces the canonical string `YYYY-MM-DD` (or `null`) — the same shape the [date filter](/docs/grid/filtering) operators compare against.
@@ -168,6 +184,8 @@ An `enum` column with **no** `options` gets the plain text editor and no strictn
 - **Commit keys.** After intentional calendar navigation, Enter chooses the cursor date and commits down (Shift+Enter up). Otherwise Enter commits typed text. Tab always commits the typed/current draft, moving right (Shift+Tab left); it never accepts a merely browsed date. Clicking a day chooses it in place. Escape cancels.
 - **Blur commits or reverts.** Clicking away with a valid (or empty) field commits; clicking away with an unparseable date cancels the edit rather than leaving a rejected value stuck open on the cell.
 - **Calendar navigation keeps focus in the field.** Day cells are announced through `aria-activedescendant` on the input rather than by moving focus into the grid.
+
+<Example id="editor-date" />
 
 #### Browsing and text editing
 
