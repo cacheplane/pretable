@@ -14,14 +14,14 @@
 - [x] Place previews beside the corresponding typed-editor sections in `apps/website/content/docs/grid/editing.mdx`, adding a single-line text section. Keep existing async and custom editor demos and avoid dangling snippet fixtures.
 - [x] Verify text commit/cancel, multiline newline/commit, number stepping/invalid/null, boolean direct toggle, enum label-to-value selection/rejection, and date canonical commit/rejection/clearing in `apps/website/e2e/editor-type-examples.spec.ts`.
 - [x] Regenerate examples; run website tests, typecheck, lint, format, production build, focused browsers, mobile/desktop Chrome inspection, and independent review.
-- [ ] PR, CI green, merge, production Chrome + focused tests, production CI green.
+- [x] PR, CI green, merge, production Chrome + focused tests, production CI green.
 
 ## 2. Selection — blove/selection-workflow-example
 
 - [x] Add `controlled-row-selection` example with an orders grid, controlled checkbox state, selected count, bulk status action, and programmatic clear. Keep cell ranges conceptually separate. Subscribe to the public grid state and preserve symbolic selection; resolve selected local orders with isRowSelected.
 - [x] Embed beside controlled checked-set guidance in `apps/website/content/docs/grid/selection.mdx`.
 - [x] Test select/clear/select-all and actual row changes from bulk action, source availability, and mobile fit.
-- [ ] Review, validate, separate PR, green merge, production verification.
+- [x] Review, validate, separate PR, green merge, production verification.
 
 ## 3. CSV export — blove/export-preview-example
 
@@ -32,9 +32,9 @@
 
 ## 4. Paste — blove/paste-validation-example
 
-- [ ] Add `paste-validation` inventory example: supply a copyable TSV block containing valid and invalid quantities, apply accepted cells via onPaste, preserve rejected values, and show visible row-specific rejection reasons. Use native paste through the built-in validation path.
-- [ ] Embed near coercion/rejections guidance in `apps/website/content/docs/grid/paste.mdx`; retain geometry/overflow demo.
-- [ ] Test mixed accepted/rejected changes, corrective retry, reset, source availability, and mobile fit.
+- [x] Add `paste-validation` inventory example: supply a copyable TSV block containing valid and invalid quantities, apply accepted cells via onPaste, preserve rejected values, and show visible row-specific rejection reasons. Use native paste through the built-in validation path.
+- [x] Embed near coercion/rejections guidance in `apps/website/content/docs/grid/paste.mdx`; retain geometry/overflow demo.
+- [x] Test mixed accepted/rejected changes, corrective retry, reset, source availability, and mobile fit.
 - [ ] Review, validate, separate PR, green merge, production verification.
 
 ## Verification commands

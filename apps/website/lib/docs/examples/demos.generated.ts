@@ -51,6 +51,7 @@ import numberFormattingDemo from "../../../content/examples/number-formatting/de
 import overviewGridDemo from "../../../content/examples/overview-grid/demo";
 import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
 import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
+import pasteValidationDemo from "../../../content/examples/paste-validation/demo";
 import presentationBadgeDemo from "../../../content/examples/presentation-badge/demo";
 import presentationDeltaDemo from "../../../content/examples/presentation-delta/demo";
 import presentationEntityDemo from "../../../content/examples/presentation-entity/demo";
@@ -116,6 +117,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "overview-grid": overviewGridDemo,
   "partial-row-stream": partialRowStreamDemo,
   "paste-geometry": pasteGeometryDemo,
+  "paste-validation": pasteValidationDemo,
   "presentation-badge": presentationBadgeDemo,
   "presentation-delta": presentationDeltaDemo,
   "presentation-entity": presentationEntityDemo,
