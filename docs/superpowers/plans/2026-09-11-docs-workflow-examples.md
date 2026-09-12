@@ -18,9 +18,9 @@
 
 ## 2. Selection — blove/selection-workflow-example
 
-- [ ] Add `controlled-row-selection` example with an orders grid, controlled checkbox state, selected count, bulk status action, and programmatic clear. Keep cell ranges conceptually separate. Subscribe to the public grid state and preserve symbolic selection; resolve selected local orders with isRowSelected.
-- [ ] Embed beside controlled checked-set guidance in `apps/website/content/docs/grid/selection.mdx`.
-- [ ] Test select/clear/select-all and actual row changes from bulk action, source availability, and mobile fit.
+- [x] Add `controlled-row-selection` example with an orders grid, controlled checkbox state, selected count, bulk status action, and programmatic clear. Keep cell ranges conceptually separate. Subscribe to the public grid state and preserve symbolic selection; resolve selected local orders with isRowSelected.
+- [x] Embed beside controlled checked-set guidance in `apps/website/content/docs/grid/selection.mdx`.
+- [x] Test select/clear/select-all and actual row changes from bulk action, source availability, and mobile fit.
 - [ ] Review, validate, separate PR, green merge, production verification.
 
 ## 3. CSV export — blove/export-preview-example

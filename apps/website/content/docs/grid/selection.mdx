@@ -191,6 +191,12 @@ Each slice in `state` (`sort`, `filters`, `selection`, `focus`) is independently
 
 `state.rowSelection` is to the checkbox column what `state.selection` is to the cell ranges. Pass it and the ticked set is yours to drive: restore what a user had last session, tick everything an action applies to, undo.
 
+Check a few orders below, then **Mark shipped** to update just those orders and clear their checkboxes. **Select all orders** and the header checkbox also work: uncheck one order to leave it out of the action. React owns the checked set through `state.rowSelection`; clicking or dragging across cells changes a separate cell-range selection.
+
+<Example id="controlled-row-selection" />
+
+The example subscribes to the public grid handle and echoes `describeRowSelection(grid.getState().selection.rows)` into React state, preserving select-all and exclusions even when `onRowSelectionChange` is silent. It compares descriptions before updating state, so unrelated grid changes do not replace the controlled selection. For the count and bulk action, it checks the three local orders with `grid.isRowSelected(order.id)`. The subscription is removed when the grid changes or the component unmounts.
+
 Its type is `PretableRowSelectionState`, exported from `@pretable/core` and `@pretable/react`. It is deliberately not a list of row ids, because the engine's own representation is not one either — flattening it here would make select-all over a million rows cost a million ids to express:
 
 ```ts
