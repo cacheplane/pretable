@@ -21,6 +21,12 @@ import dateFormattingDemo from "../../../content/examples/date-formatting/demo";
 import deepCssOverrideDemo from "../../../content/examples/deep-css-override/demo";
 import densityHelpersDemo from "../../../content/examples/density-helpers/demo";
 import densityToggleLiveDemo from "../../../content/examples/density-toggle-live/demo";
+import editorBooleanDemo from "../../../content/examples/editor-boolean/demo";
+import editorDateDemo from "../../../content/examples/editor-date/demo";
+import editorEnumDemo from "../../../content/examples/editor-enum/demo";
+import editorMultilineDemo from "../../../content/examples/editor-multiline/demo";
+import editorNumberDemo from "../../../content/examples/editor-number/demo";
+import editorTextDemo from "../../../content/examples/editor-text/demo";
 import exportCsvDemo from "../../../content/examples/export-csv/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import gridLevelRenderersDemo from "../../../content/examples/grid-level-renderers/demo";
@@ -78,6 +84,12 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "deep-css-override": deepCssOverrideDemo,
   "density-helpers": densityHelpersDemo,
   "density-toggle-live": densityToggleLiveDemo,
+  "editor-boolean": editorBooleanDemo,
+  "editor-date": editorDateDemo,
+  "editor-enum": editorEnumDemo,
+  "editor-multiline": editorMultilineDemo,
+  "editor-number": editorNumberDemo,
+  "editor-text": editorTextDemo,
   "export-csv": exportCsvDemo,
   "first-grid": firstGridDemo,
   "grid-level-renderers": gridLevelRenderersDemo,
