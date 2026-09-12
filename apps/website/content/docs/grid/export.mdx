@@ -177,6 +177,19 @@ export, or narrow the predicate as above.
 
 ## Options
 
+Choose a column subset, headers, and delimiter below, then click **Preview CSV**.
+The grid's `exportCsv` passes the actual `PretableCsvFile` to `saveFile`, which
+captures it for display. **Download CSV** passes that same file to
+`defaultSaveFile` with a timestamped `orders-preview` filename.
+
+<Example id="export-preview" />
+
+Changing any export setting clears the preview; generate it again before
+downloading. The preview captures the current grid output, including the Total
+column's USD `numberFormat`. Commas and quotation marks in the customer names
+show how the serializer quotes fields. This example uses `bom: false` so the
+preview text is exactly the downloaded text, without an invisible BOM.
+
 | Option                 | Type                                        | Required | Description                                                                                                                    |
 | ---------------------- | ------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `delimiter`            | `string`                                    | no       | Field separator, default `","`. Excel follows the OS list separator, which is `;` across much of Europe.                       |
