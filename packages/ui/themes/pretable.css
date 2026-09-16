@@ -31,7 +31,7 @@
  *           so tier 3 is the lightest surface in the theme.
  *
  * There is no container edge. The grid is frameless: --pretable-frame is 0,
- * --pretable-shadow-card is none, --pretable-radius is 0. Embedded in a host
+ * --pretable-shadow-card is none, --pretable-radius-frame is 0. Embedded in a host
  * page it is one plane with the page, separated from it by whitespace and by
  * the header's tint alone. The sticky header's seam against rows scrolling
  * under it is --pretable-shadow-header, drawn only while the surface reports
@@ -106,8 +106,11 @@
   --pretable-rule-width: 1px;
 
   /* --- Radii ----------------------------------------------------------- */
-  /* No frame, so nothing for a container radius to round. Controls keep theirs. */
-  --pretable-radius: 0;
+  /* The container is square because it has no frame: with no edge and no
+     shadow there is no corner for a radius to round. Menus, popovers and the
+     group chips are lifted, edged surfaces and keep the 10px radius. */
+  --pretable-radius-frame: 0;
+  --pretable-radius: 10px;
   --pretable-radius-control: 6px;
 
   /* --- State ----------------------------------------------------------- */
@@ -181,8 +184,10 @@
      an affordance inherit a decorative value. */
   --pretable-selection-bg: rgba(37, 84, 207, 0.07);
   --pretable-checkbox-bg: #ffffff;
-  /* An affordance, so it owes the 3:1 non-text floor: 3.00:1 on the paper. */
-  --pretable-checkbox-border: #94949f;
+  /* An affordance, so it owes the 3:1 non-text floor on BOTH surfaces it sits
+     on: 3.24:1 on the paper, 3.03:1 on the header rail under the select-all
+     box. */
+  --pretable-checkbox-border: #8e8e99;
   --pretable-checkbox-checked-bg: #2554cf;
   --pretable-checkbox-checked-fg: #ffffff;
   --pretable-resize-handle: transparent;
@@ -330,7 +335,7 @@
   /* Grid controls */
   --pretable-selection-bg: rgba(138, 176, 255, 0.12);
   --pretable-checkbox-bg: #141418;
-  --pretable-checkbox-border: #6a6a78; /* 3.45:1 on the paper */
+  --pretable-checkbox-border: #6a6a78; /* 3.45:1 on the paper, 3.25:1 on the rail */
   --pretable-checkbox-checked-bg: #8ab0ff;
   /* Dark ink, not white. White on a light-blue chip is 1.70:1 — the defect
      Material ships because it left this token out of its dark block. */

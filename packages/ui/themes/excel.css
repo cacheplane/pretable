@@ -50,7 +50,8 @@
      -strong frame borders and popover/menu/editor borders are still hardcoded 1px. */
   --pretable-rule-vertical: var(--pretable-rule);
   --pretable-rule-width: 1px;
-  --pretable-radius: 0; /* Sharp edges — Excel never rounds */
+  --pretable-radius-frame: 0; /* Sharp edges — Excel never rounds */
+  --pretable-radius: 0;
   --pretable-radius-control: 0; /* Buttons and menu items don't round either */
 
   /* State */

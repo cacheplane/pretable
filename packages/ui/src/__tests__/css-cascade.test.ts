@@ -1355,7 +1355,7 @@ describe("grid.css cascade contract", () => {
     const viewport = css.match(
       /:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,
     )?.[1];
-    expect(viewport).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
+    expect(viewport).toMatch(/border-radius:\s*var\(--pretable-radius-frame\)/);
   });
 
   test("grid.css styles the kit listbox the enum combobox pops open", () => {
@@ -1977,7 +1977,7 @@ describe("grid.css cascade contract", () => {
       )?.[1];
       expect(layout, "no [data-pretable-tool-layout] rule").toBeDefined();
       expect(layout).toMatch(/border:\s*var\(--pretable-frame\)/);
-      expect(layout).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
+      expect(layout).toMatch(/border-radius:\s*var\(--pretable-radius-frame\)/);
       expect(layout).toMatch(/box-shadow:\s*var\(--pretable-shadow-card\)/);
       // The wrapper clips its square-cornered children to its own radius;
       // without it every child's corner pokes through the rounded frame.
@@ -2169,6 +2169,12 @@ describe("grid.css cascade contract", () => {
       )?.[1];
       expect(viewport, "no scroll-viewport rule").toBeDefined();
       expect(viewport).toMatch(/border:\s*var\(--pretable-frame\)/);
+      // The container's corners are the frame's token, not the shared
+      // --pretable-radius: a frameless theme squares the container and the
+      // menus, popovers and chips keep their radius.
+      expect(viewport).toMatch(
+        /border-radius:\s*var\(--pretable-radius-frame\)/,
+      );
 
       const panel = css.match(
         /:where\(\[data-pretable-group-panel\]\)\s*\{([\s\S]*?)\}/,
@@ -2176,6 +2182,25 @@ describe("grid.css cascade contract", () => {
       expect(panel, "no group-panel rule").toBeDefined();
       expect(panel).toMatch(/border:\s*var\(--pretable-frame\)/);
       expect(panel).toMatch(/border-bottom:\s*0/);
+      expect(panel).toMatch(
+        /border-radius:\s*var\(--pretable-radius-frame\)\s+var\(--pretable-radius-frame\)\s+0\s+0/,
+      );
+
+      const layout = css.match(
+        /:where\(\[data-pretable-tool-layout\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(layout, "no tool-layout rule").toBeDefined();
+      expect(layout).toMatch(/border-radius:\s*var\(--pretable-radius-frame\)/);
+
+      // Lookbehind skips the `error, error-strip` colour rule, whose second
+      // selector would otherwise match first.
+      const strip = css.match(
+        /(?<!,\s*):where\(\[data-pretable-body-state="error-strip"\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(strip, "no error-strip rule").toBeDefined();
+      expect(strip).toMatch(
+        /border-radius:\s*var\(--pretable-radius-frame\)\s+var\(--pretable-radius-frame\)\s+0\s+0/,
+      );
 
       const header = css.match(
         /:where\(\[data-pretable-header-row\]\)\s*\{([\s\S]*?)\}/,

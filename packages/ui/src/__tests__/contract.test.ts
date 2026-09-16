@@ -19,6 +19,7 @@ const TOKENS = [
   "pretable-frame",
   "pretable-rule-vertical",
   "pretable-rule-width",
+  "pretable-radius-frame",
   "pretable-radius",
   "pretable-radius-control",
   "pretable-bg-hover",
@@ -327,6 +328,8 @@ describe("token contract", () => {
     // "small tweak" cannot quietly bring the frame back.
     const LIGHT: Record<string, string> = {
       "--pretable-frame": "0",
+      // Not a colour, so the dark block does not restate it; pinned once.
+      "--pretable-radius-frame": "0",
       "--pretable-shadow-card": "none",
       "--pretable-bg-header": "#f7f7f9",
       "--pretable-bg-toolbar": "#f7f7f9",
@@ -335,7 +338,7 @@ describe("token contract", () => {
       "--pretable-rule": "#ececf0",
       "--pretable-rule-header": "#e6e6eb",
       "--pretable-rule-strong": "#c2c2cb",
-      "--pretable-checkbox-border": "#94949f",
+      "--pretable-checkbox-border": "#8e8e99",
       "--pretable-selection-bg": "rgba(37, 84, 207, 0.07)",
     };
     const DARK: Record<string, string> = {
@@ -351,6 +354,15 @@ describe("token contract", () => {
       "--pretable-checkbox-border": "#6a6a78",
       "--pretable-selection-bg": "rgba(138, 176, 255, 0.12)",
     };
+    // [foreground token, background token, minimum ratio]. Header ink is
+    // text: 4.5:1 on the rail it sits on. The checkbox border is an
+    // affordance: 3:1 on the paper AND on the rail, because the select-all
+    // box sits on the header.
+    const FLOORS: ReadonlyArray<[string, string, number]> = [
+      ["--pretable-text-header", "--pretable-bg-header", 4.5],
+      ["--pretable-checkbox-border", "--pretable-bg-grid", 3],
+      ["--pretable-checkbox-border", "--pretable-bg-header", 3],
+    ];
 
     for (const [mode, expected] of [
       ["light", LIGHT],
@@ -361,21 +373,25 @@ describe("token contract", () => {
         if (mode === "dark") {
           document.documentElement.setAttribute("data-theme", "dark");
         }
-        const computed = getComputedStyle(document.documentElement);
-        // jsdom's CSSOM re-serialises rgba() without its spaces, so compare
-        // the two spellings with whitespace removed; the literal is still
-        // pinned to the digit.
-        const squash = (v: string) => v.replace(/\s+/g, "");
-        for (const [token, value] of Object.entries(expected)) {
-          expect(squash(computed.getPropertyValue(token)), token).toBe(
-            squash(value),
-          );
+        try {
+          const computed = getComputedStyle(document.documentElement);
+          // jsdom's CSSOM re-serialises rgba() without its spaces, so compare
+          // the two spellings with whitespace removed; the literal is still
+          // pinned to the digit, and the only whitespace in any pinned literal
+          // is inside rgba(...), so squashing cannot mask a real difference.
+          const squash = (v: string) => v.replace(/\s+/g, "");
+          for (const [token, value] of Object.entries(expected)) {
+            expect(squash(computed.getPropertyValue(token)), token).toBe(
+              squash(value),
+            );
+          }
+          expect(
+            computed.getPropertyValue("--pretable-shadow-header").trim(),
+            "the scrolled seam must exist in the house theme",
+          ).not.toBe("none");
+        } finally {
+          cleanup();
         }
-        expect(
-          computed.getPropertyValue("--pretable-shadow-header").trim(),
-          "the scrolled seam must exist in the house theme",
-        ).not.toBe("none");
-        cleanup();
       });
 
       test(`contrast floors (${mode})`, () => {
@@ -383,17 +399,19 @@ describe("token contract", () => {
         if (mode === "dark") {
           document.documentElement.setAttribute("data-theme", "dark");
         }
-        const header = resolveToken("--pretable-bg-header");
-        const grid = resolveToken("--pretable-bg-grid");
-        // Header ink is text: 4.5:1 on the rail it sits on.
-        expect(
-          contrastRatio(resolveToken("--pretable-text-header"), header),
-        ).toBeGreaterThanOrEqual(4.5);
-        // The checkbox border is an affordance: 3:1 on the paper.
-        expect(
-          contrastRatio(resolveToken("--pretable-checkbox-border"), grid),
-        ).toBeGreaterThanOrEqual(3);
-        cleanup();
+        try {
+          for (const [fgToken, bgToken, min] of FLOORS) {
+            const fg = resolveToken(fgToken);
+            const bg = resolveToken(bgToken);
+            const ratio = contrastRatio(fg, bg);
+            expect(
+              ratio,
+              `${mode}: ${fgToken} ${fg} on ${bgToken} ${bg} is ${ratio.toFixed(2)}:1, under ${min}:1`,
+            ).toBeGreaterThanOrEqual(min);
+          }
+        } finally {
+          cleanup();
+        }
       });
     }
   });

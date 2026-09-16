@@ -54,7 +54,8 @@
      -strong frame borders and popover/menu/editor borders are still hardcoded 1px. */
   --pretable-rule-vertical: var(--pretable-rule);
   --pretable-rule-width: 1px;
-  --pretable-radius: 12px; /* M3 medium shape scale (matches Card) */
+  --pretable-radius-frame: 12px; /* M3 medium shape scale (matches Card) */
+  --pretable-radius: 12px; /* Menus and popovers share the medium scale */
   /* Small affordances need their own step: the card radius applied to a 14–18px
      control (funnel, ⋮ button, chip remove) rounds it into a circle. M3 small
      shape scale. */

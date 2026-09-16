@@ -47,12 +47,17 @@
   /* Outer viewport (scrollable container).
      The frame is a token, not a literal: the house theme is frameless and
      sets --pretable-frame to 0, the compatibility skins set it to a 1px line.
-     --pretable-rule-strong no longer takes part here — its remaining
-     consumers are the select listbox, the date popover and the badge. */
+     The container's corners are their own token too: --pretable-radius-frame
+     rounds only the container sites (this viewport, the tool-layout wrapper,
+     the group panel, the error strip), so a frameless theme can square the
+     container without squaring the menus, popovers and chips that read
+     --pretable-radius. --pretable-rule-strong no longer takes part here — its
+     remaining consumers are the select listbox, the date popover and the
+     badge. */
   :where([data-pretable-scroll-viewport]) {
     background: var(--pretable-bg-grid);
     border: var(--pretable-frame);
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-frame);
     box-shadow: var(--pretable-shadow-card);
     font-family: var(--pretable-font-sans);
     color: var(--pretable-text-cell);
@@ -1214,7 +1219,7 @@
     background: var(--pretable-bg-toolbar);
     border: var(--pretable-frame);
     border-bottom: 0;
-    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+    border-radius: var(--pretable-radius-frame) var(--pretable-radius-frame) 0 0;
     color: var(--pretable-text-header);
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-header);
@@ -1678,12 +1683,12 @@
   }
 
   /* The strip is a card stacked on top of the box below it, so it carries that
-     box's border and rounds only its own top. `border-bottom: 0` is what stops
-     the seam being drawn twice. */
+     box's border and rounds only its own top, with the container's radius
+     token. `border-bottom: 0` is what stops the seam being drawn twice. */
   :where([data-pretable-body-state="error-strip"]) {
     border: var(--pretable-frame);
     border-bottom: 0;
-    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+    border-radius: var(--pretable-radius-frame) var(--pretable-radius-frame) 0 0;
   }
 
   /* …and the box below squares the two corners that now meet in the middle,
@@ -1712,7 +1717,7 @@
      vertically, one axis over. */
   :where([data-pretable-tool-layout]) {
     border: var(--pretable-frame);
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-frame);
     box-shadow: var(--pretable-shadow-card);
     /* The children keep square corners and the wrapper's radius clips them.
        Safe to clip: every floating grid child (menus, editors, the reorder
