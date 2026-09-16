@@ -2193,8 +2193,10 @@ describe("grid.css cascade contract", () => {
       expect(scrolled).toMatch(/box-shadow:\s*var\(--pretable-shadow-header\)/);
 
       // No literal frame survives anywhere the token now governs. The
-      // selector handed to the predicate stops BEFORE the `{`, so the two
-      // base-rule sites anchor on end-of-selector, not on the brace.
+      // selector handed to the predicate stops BEFORE the `{`, so three of
+      // the sites (tool-layout, group-panel, error-strip) anchor on
+      // end-of-selector: each name also appears as the prefix of longer
+      // combinator selectors, and the anchor keeps the sweep on the base rule.
       const literalFrames = rulesSelecting(css, (s) =>
         /scroll-viewport\]\)|tool-layout\]\)\s*$|group-panel\]\)\s*$|header-row\]\)|error-strip"\]\)\s*$/.test(
           s,

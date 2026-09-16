@@ -47,8 +47,8 @@
   /* Outer viewport (scrollable container).
      The frame is a token, not a literal: the house theme is frameless and
      sets --pretable-frame to 0, the compatibility skins set it to a 1px line.
-     --pretable-rule-strong no longer takes part here — its remaining job is
-     the edge of lifted surfaces (menus, popovers, the editor). */
+     --pretable-rule-strong no longer takes part here — its remaining
+     consumers are the select listbox, the date popover and the badge. */
   :where([data-pretable-scroll-viewport]) {
     background: var(--pretable-bg-grid);
     border: var(--pretable-frame);
