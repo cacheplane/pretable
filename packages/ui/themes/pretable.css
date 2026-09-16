@@ -89,6 +89,8 @@
      3.52:1 on the header, 4.00:1 on the grid — clears the 3:1 non-text floor
      against both of its backgrounds. Near-white here is the classic trap. */
   --pretable-rule-strong: #7e7e8b;
+  --pretable-rule-header: var(--pretable-rule-strong);
+  --pretable-frame: 1px solid var(--pretable-rule-strong);
   /* No cage. This is the single biggest visual difference from a spreadsheet,
      and it matters more as rows get taller: in a wrapped 90px row a vertical
      divider becomes a long empty channel running through whitespace. */
@@ -189,6 +191,7 @@
      that the token is inert. */
   --pretable-shadow-card:
     0 1px 2px rgba(16, 17, 26, 0.05), 0 2px 8px -4px rgba(16, 17, 26, 0.1);
+  --pretable-shadow-header: none;
   /* The frozen-column edge, now that pinned cells no longer announce
      themselves with a grey fill. Spread must be <= -blur/2 or the blur bleeds
      above and below each pinned cell and bands every row boundary. */
