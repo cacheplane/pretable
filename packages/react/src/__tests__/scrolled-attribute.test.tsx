@@ -33,7 +33,7 @@ function viewport(container: HTMLElement): HTMLElement {
 /**
  * jsdom's own `scrollTop` accessor is pinned at 0 and swallows writes, so the
  * test would otherwise dispatch a scroll event on a viewport that still reads
- * 0. Same recording-accessor trick as focus-scroll.test.tsx.
+ * 0. Same writable-accessor trick as focus-scroll.test.tsx.
  */
 function makeScrollTopWritable(el: HTMLElement) {
   let scrollTop = 0;

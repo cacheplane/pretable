@@ -2007,8 +2007,9 @@ export function PretableSurface<
   // Whether any rows have passed under the sticky header. Published as
   // `data-pretable-scrolled` so the stylesheet can draw the header's seam
   // only when there is something to separate. A boolean in state, not a
-  // per-scroll attribute write: React dedupes the render when it does not
-  // flip, and it flips twice per scroll gesture at most.
+  // per-scroll attribute write: the setter runs on every scroll event, but
+  // React's same-value bailout makes the unchanged case free, and it flips
+  // twice per scroll gesture at most.
   const [scrolled, setScrolled] = useState(false);
   const [liveMessage, setLiveMessage] = useState<string>("");
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -6376,10 +6377,7 @@ export function PretableSurface<
       }}
       onScroll={(event) => {
         const el = event.currentTarget;
-        const isScrolled = el.scrollTop > 0;
-        if (isScrolled !== scrolled) {
-          setScrolled(isScrolled);
-        }
+        setScrolled(el.scrollTop > 0);
         grid.setViewport({
           scrollTop: el.scrollTop,
           scrollLeft: el.scrollLeft,
