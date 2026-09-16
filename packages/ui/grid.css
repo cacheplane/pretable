@@ -68,19 +68,15 @@
   }
 
   /* The sticky header earns its seam only once rows pass under it. The
-     surface sets [data-pretable-scrolled] on the viewport at scrollTop > 0.
-     z-index so the shadow paints over the first data row rather than under
-     it: the header is sticky, so it already has a stacking context, but it
-     still needs to sort above absolutely positioned rows. The React surface
-     already sets `z-index: 3` inline on the row (styles.ts getHeaderRowStyle),
-     which wins over this declaration; 4 is one above that, and is the floor
-     for a renderer that does not carry the inline style. */
+     surface sets [data-pretable-scrolled] on the viewport at scrollTop > 0;
+     the header's stacking comes from the surface's inline sticky style, so
+     the shadow paints over the first row without this rule saying anything
+     about z-index. */
   :where(
     [data-pretable-scroll-viewport][data-pretable-scrolled]
       [data-pretable-header-row]
   ) {
     box-shadow: var(--pretable-shadow-header);
-    z-index: 4;
   }
 
   :where([data-pretable-header-cell]) {
@@ -1685,7 +1681,7 @@
      box's border and rounds only its own top. `border-bottom: 0` is what stops
      the seam being drawn twice. */
   :where([data-pretable-body-state="error-strip"]) {
-    border: 1px solid var(--pretable-rule-strong);
+    border: var(--pretable-frame);
     border-bottom: 0;
     border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
   }

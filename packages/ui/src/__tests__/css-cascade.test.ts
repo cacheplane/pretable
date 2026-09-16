@@ -2191,15 +2191,12 @@ describe("grid.css cascade contract", () => {
       )?.[1];
       expect(scrolled, "no scrolled header rule").toBeDefined();
       expect(scrolled).toMatch(/box-shadow:\s*var\(--pretable-shadow-header\)/);
-      // Sticky header, scrolling rows: the shadow has to paint OVER the first
-      // row, which needs the header above it in stacking order.
-      expect(scrolled).toMatch(/z-index:\s*[1-9]/);
 
       // No literal frame survives anywhere the token now governs. The
       // selector handed to the predicate stops BEFORE the `{`, so the two
       // base-rule sites anchor on end-of-selector, not on the brace.
       const literalFrames = rulesSelecting(css, (s) =>
-        /scroll-viewport\]\)|tool-layout\]\)\s*$|group-panel\]\)\s*$|header-row\]\)/.test(
+        /scroll-viewport\]\)|tool-layout\]\)\s*$|group-panel\]\)\s*$|header-row\]\)|error-strip"\]\)\s*$/.test(
           s,
         ),
       ).filter((m) =>
