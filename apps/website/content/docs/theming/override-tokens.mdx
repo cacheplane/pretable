@@ -4,7 +4,7 @@ description: "Override individual --pretable-* tokens with plain CSS cascade —
 nav: Theming
 ---
 
-The override story is plain CSS cascade. Pick a theme, redefine any of its 50 tokens in your own stylesheet, and your values win because they load after the theme.
+The override story is plain CSS cascade. Pick a theme, redefine any of its 54 tokens in your own stylesheet, and your values win because they load after the theme.
 
 <Example id="token-override-live" />
 
@@ -51,18 +51,19 @@ Pretable ships three concrete themes, but the token contract works for any palet
 
 ### Change the corner radius
 
-The `pretable` theme ships `--pretable-radius: 10px`; Excel ships `0` for sharp spreadsheet corners. To move either without writing a new theme:
+The container and the lifted surfaces round separately. `--pretable-radius-frame` is the container corner: the `pretable` theme ships `0` (it is frameless, so there is no edge to round), Material `12px`, and Excel `0` for sharp spreadsheet corners. `--pretable-radius` rounds the popovers, the kit listbox, and the group chips: `10px` under `pretable`. To move either without writing a new theme:
 
 ```css
 @import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 
 :root {
+  --pretable-radius-frame: 4px;
   --pretable-radius: 4px;
 }
 ```
 
-The grid container's outer border radius now reflects your value. Cells stay square — the radius applies only to the outermost wrapper. Small affordances (menu items, the funnel and ⋮ buttons, the chip remove target) take `--pretable-radius-control` instead, because the container radius applied to a 14–18px control rounds it into a circle.
+The grid container's outer corners and every popover now reflect your values. Cells stay square — `--pretable-radius-frame` applies only to the outermost wrapper, and under the `pretable` theme it rounds nothing visible until you also give the container an edge with `--pretable-frame`. Small affordances (menu items, the funnel and ⋮ buttons, the chip remove target) take `--pretable-radius-control` instead, because the container radius applied to a 14–18px control rounds it into a circle.
 
 ### Change density values
 
@@ -85,16 +86,16 @@ The engine reads `--pretable-row-height`, `--pretable-header-height`, and `--pre
 
 ## Token groups
 
-The 50 tokens group by purpose. When overriding, think in groups:
+The 54 tokens group by purpose. When overriding, think in groups:
 
 - **Surfaces** drive cell, pinned-cell, group-row, header, toolbar, and popover backgrounds.
 - **Text** drives readable content color.
-- **Lines and radii** drive gridlines, container borders, and corner rounding. The horizontal and vertical rules are separate tokens, so a theme can drop the column cage without losing row separation.
+- **Lines and radii** drive gridlines, the container frame, and corner rounding. The horizontal and vertical rules are separate tokens, so a theme can drop the column cage without losing row separation.
 - **State** drives hover, selection, and focus interaction.
 - **Editing** skins the inline cell editor and its invalid-input state.
 - **Accent** is the interactive hue.
 - **Semantic ramp** is the four state colors — positive, negative, warning, info — that the delta, status, and badge cell presentations read.
-- **Elevation** drives popover shadows, the container's card shadow, and the frozen-column seam.
+- **Elevation** drives popover shadows, the container's card shadow, the sticky header's seam while scrolled, and the frozen-column seam.
 - **Density** drives row heights, padding, font sizes, and the per-level indent of a grouped row.
 - **Icons** is the single draw size shared by every built-in glyph.
 - **Typography** drives font family stacks (sans for chrome, mono for numeric cells).
@@ -110,7 +111,7 @@ See [Token reference](/docs/theming/token-reference) for the full list with desc
 
 ## Where to go next
 
-- [Token reference](/docs/theming/token-reference) — the canonical 50-token table.
+- [Token reference](/docs/theming/token-reference) — the canonical 54-token table.
 - [Light / dark switching](/docs/theming/light-dark) — runtime variant toggle.
 - [Density switching](/docs/theming/density) — runtime density toggle.
 - [Custom themes](/docs/theming/custom-themes) — when overrides grow into a full theme, switch to authoring one.
