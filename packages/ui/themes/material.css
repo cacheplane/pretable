@@ -116,7 +116,7 @@
      scale is named for what is lifted, not for the drag ghost that happened to
      need one first. */
   --pretable-shadow-overlay: 0 4px 12px rgb(0 0 0 / 0.12);
-  /* No card shadow: this theme draws a frame instead. pretable.css uses it. */
+  /* No card shadow: this theme draws a frame instead. */
   --pretable-shadow-card: none;
   --pretable-shadow-header: none;
   /* The frozen-column edge, as a COLOUR rather than a whole shadow: the right
