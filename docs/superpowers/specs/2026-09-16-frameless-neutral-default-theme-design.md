@@ -52,7 +52,7 @@ The rail stays a plane, but a quieter one, and its resting underline becomes the
 
 `--pretable-rule-header` is a new token: `#e6e6eb` light, `#2a2a32` dark. It is one step darker than the row hairline so the rail still ends somewhere, and it is decorative, so it may sit under 3:1.
 
-Header text must still clear 4.5:1 on the rail: `#6b6b76` on `#f7f7f9` is 5.0:1; `#8f8f9c` on `#1a1a20` is 5.9:1. The implementation re-measures and pins both.
+Header text must still clear 4.5:1 on the rail: `#6b6b76` on `#f7f7f9` is 4.92:1; `#8f8f9c` on `#1a1a20` is 5.42:1. Both are pinned by the contract test.
 
 ### The scrolled seam
 
@@ -73,7 +73,7 @@ The attribute is a public DOM contract like `data-pretable-hydrated`, documented
 | `--pretable-selection-bg` | `rgba(37,84,207,.10)` | `rgba(37,84,207,.07)` | `rgba(138,176,255,.16)` | `rgba(138,176,255,.12)` |
 | `--pretable-checkbox-border` | `#787885` | `#94949f` | `#727281` | `#6a6a78` |
 
-The checkbox border is an affordance, so it keeps a 3:1 floor. `#94949f` on white is 3.06:1, the lightest neutral that clears it; the mockup's `#9a9aa6` was 2.9:1 and is rejected. The contrast test pins the shipped value. Focus ring, checked checkbox, drop indicator, and the semantic ramp are unchanged.
+The checkbox border is an affordance, so it keeps a 3:1 floor. `#94949f` on white is 3.00:1, the lightest neutral that clears it; the mockup's `#9a9aa6` was 2.78:1 and is rejected. The contrast test pins the shipped value. Focus ring, checked checkbox, drop indicator, and the semantic ramp are unchanged.
 
 `--pretable-rule-vertical` stays `transparent`. No zebra. Density tiers unchanged.
 
