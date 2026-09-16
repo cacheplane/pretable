@@ -2004,6 +2004,12 @@ export function PretableSurface<
     ghostHeader: string;
   } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
+  // Whether any rows have passed under the sticky header. Published as
+  // `data-pretable-scrolled` so the stylesheet can draw the header's seam
+  // only when there is something to separate. A boolean in state, not a
+  // per-scroll attribute write: React dedupes the render when it does not
+  // flip, and it flips twice per scroll gesture at most.
+  const [scrolled, setScrolled] = useState(false);
   const [liveMessage, setLiveMessage] = useState<string>("");
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingAnnouncementRef = useRef<string | null>(null);
@@ -5952,6 +5958,7 @@ export function PretableSurface<
       data-pretable-data-phase={dataState?.phase}
       data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
+      data-pretable-scrolled={scrolled ? "" : undefined}
       ref={viewportRef}
       // A grouped grid IS a tree, and the role is what makes Left/Right
       // expand/collapse discoverable to a screen-reader user rather than an
@@ -6369,6 +6376,10 @@ export function PretableSurface<
       }}
       onScroll={(event) => {
         const el = event.currentTarget;
+        const isScrolled = el.scrollTop > 0;
+        if (isScrolled !== scrolled) {
+          setScrolled(isScrolled);
+        }
         grid.setViewport({
           scrollTop: el.scrollTop,
           scrollLeft: el.scrollLeft,
