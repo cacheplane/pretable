@@ -322,6 +322,82 @@ describe("token contract", () => {
     }
   }
 
+  describe("pretable.css is frameless and neutral", () => {
+    // The literals the 2026-09-16 frameless spec chose. Pinned so a later
+    // "small tweak" cannot quietly bring the frame back.
+    const LIGHT: Record<string, string> = {
+      "--pretable-frame": "0",
+      "--pretable-shadow-card": "none",
+      "--pretable-bg-header": "#f7f7f9",
+      "--pretable-bg-toolbar": "#f7f7f9",
+      "--pretable-bg-group-row": "#fafafb",
+      "--pretable-text-header": "#6b6b76",
+      "--pretable-rule": "#ececf0",
+      "--pretable-rule-header": "#e6e6eb",
+      "--pretable-rule-strong": "#c2c2cb",
+      "--pretable-checkbox-border": "#94949f",
+      "--pretable-selection-bg": "rgba(37, 84, 207, 0.07)",
+    };
+    const DARK: Record<string, string> = {
+      "--pretable-frame": "0",
+      "--pretable-shadow-card": "none",
+      "--pretable-bg-header": "#1a1a20",
+      "--pretable-bg-toolbar": "#1a1a20",
+      "--pretable-bg-group-row": "#17171c",
+      "--pretable-text-header": "#8f8f9c",
+      "--pretable-rule": "#25252c",
+      "--pretable-rule-header": "#2a2a32",
+      "--pretable-rule-strong": "#3a3a44",
+      "--pretable-checkbox-border": "#6a6a78",
+      "--pretable-selection-bg": "rgba(138, 176, 255, 0.12)",
+    };
+
+    for (const [mode, expected] of [
+      ["light", LIGHT],
+      ["dark", DARK],
+    ] as const) {
+      test(`literals (${mode})`, () => {
+        const cleanup = loadCSS(path.join(THEMES_DIR, "pretable.css"));
+        if (mode === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+        const computed = getComputedStyle(document.documentElement);
+        // jsdom's CSSOM re-serialises rgba() without its spaces, so compare
+        // the two spellings with whitespace removed; the literal is still
+        // pinned to the digit.
+        const squash = (v: string) => v.replace(/\s+/g, "");
+        for (const [token, value] of Object.entries(expected)) {
+          expect(squash(computed.getPropertyValue(token)), token).toBe(
+            squash(value),
+          );
+        }
+        expect(
+          computed.getPropertyValue("--pretable-shadow-header").trim(),
+          "the scrolled seam must exist in the house theme",
+        ).not.toBe("none");
+        cleanup();
+      });
+
+      test(`contrast floors (${mode})`, () => {
+        const cleanup = loadCSS(path.join(THEMES_DIR, "pretable.css"));
+        if (mode === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+        const header = resolveToken("--pretable-bg-header");
+        const grid = resolveToken("--pretable-bg-grid");
+        // Header ink is text: 4.5:1 on the rail it sits on.
+        expect(
+          contrastRatio(resolveToken("--pretable-text-header"), header),
+        ).toBeGreaterThanOrEqual(4.5);
+        // The checkbox border is an affordance: 3:1 on the paper.
+        expect(
+          contrastRatio(resolveToken("--pretable-checkbox-border"), grid),
+        ).toBeGreaterThanOrEqual(3);
+        cleanup();
+      });
+    }
+  });
+
   test("grid.css actually consumes the semantic ramp", () => {
     // The reverse of every other check in this file, and the one this project
     // keeps needing: four separate times a token has been declared by all three
