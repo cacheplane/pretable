@@ -34,7 +34,7 @@ The scroll viewport and the group panel lose their frame entirely.
 | group panel `border` | `1px solid var(--pretable-rule-strong)`, no bottom | none |
 | group panel `border-radius` | top corners `var(--pretable-radius)` | none |
 
-Implementation choice: the `grid.css` rules stay and read tokens; the theme sets the tokens to nothing. Concretely `grid.css` keeps `border: var(--pretable-frame)` where the theme sets `--pretable-frame: 0`, `--pretable-radius: 0`, and `--pretable-shadow-card: none`. This keeps the existing `css-cascade` contract that the viewport reads the frame from a token, and lets Excel and Material keep drawing theirs by setting `--pretable-frame: 1px solid var(--pretable-rule-strong)`. The `[data-pretable-group-panel-wrapper] > [data-pretable-scroll-viewport]` corner rule becomes a no-op at radius 0 and is deleted.
+Implementation choice: the `grid.css` rules stay and read tokens; the theme sets the tokens to nothing. Concretely `grid.css` keeps `border: var(--pretable-frame)` where the theme sets `--pretable-frame: 0`, `--pretable-radius-frame: 0`, and `--pretable-shadow-card: none`. This keeps the existing `css-cascade` contract that the viewport reads the frame from a token, and lets Excel and Material keep drawing theirs by setting `--pretable-frame: 1px solid var(--pretable-rule-strong)`. Container corners read a new `--pretable-radius-frame` token (viewport, tool-layout wrapper, group panel, error strip); `--pretable-radius` keeps rounding lifted surfaces and chips, since grid.css reads it on the listbox, popovers, tooltip and group chip. The house theme sets the frame radius to 0 and keeps the lifted radius at 10px; Excel sets both to 0 and Material both to 12px.
 
 `--pretable-rule-strong` is demoted to one job: the edge of lifted surfaces (menus, popovers, tooltip, the cell editor). Its comment block is rewritten to say so. Its value may lighten to `#c2c2cb` light and `#3a3a44` dark, since it no longer owes 3:1 against the header.
 
@@ -71,15 +71,15 @@ The attribute is a public DOM contract like `data-pretable-hydrated`, documented
 |---|---|---|---|---|
 | `--pretable-rule` | `#dfdfe5` | `#ececf0` | `#2c2c34` | `#25252c` |
 | `--pretable-selection-bg` | `rgba(37,84,207,.10)` | `rgba(37,84,207,.07)` | `rgba(138,176,255,.16)` | `rgba(138,176,255,.12)` |
-| `--pretable-checkbox-border` | `#787885` | `#94949f` | `#727281` | `#6a6a78` |
+| `--pretable-checkbox-border` | `#787885` | `#8e8e99` | `#727281` | `#6a6a78` |
 
-The checkbox border is an affordance, so it keeps a 3:1 floor. `#94949f` on white is 3.00:1, the lightest neutral that clears it; the mockup's `#9a9aa6` was 2.78:1 and is rejected. The contrast test pins the shipped value. Focus ring, checked checkbox, drop indicator, and the semantic ramp are unchanged.
+The checkbox border is an affordance, so it keeps a 3:1 floor. The box also sits on the header rail as the select-all control, so the floor is measured against both surfaces: `#8e8e99` is 3.24:1 on white and 3.03:1 on the rail. `#94949f` was 2.81:1 on the rail and is rejected. The contrast test pins both. Focus ring, checked checkbox, drop indicator, and the semantic ramp are unchanged.
 
 `--pretable-rule-vertical` stays `transparent`. No zebra. Density tiers unchanged.
 
 ### Tokens removed
 
-`--pretable-radius` on the container is no longer read by the house theme but the token stays, because Excel, Material, and custom themes use it and the control radius still derives from `--pretable-radius-control`. Nothing is removed from the public token list; two are added (`--pretable-rule-header`, `--pretable-shadow-header`) and one is added to `grid.css`'s consumption (`--pretable-frame`).
+Nothing is removed from the public token list. Four are added: `--pretable-frame`, `--pretable-radius-frame`, `--pretable-rule-header`, `--pretable-shadow-header`. The contract grows from 50 to 54.
 
 ## What does not change
 

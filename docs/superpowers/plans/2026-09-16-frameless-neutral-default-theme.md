@@ -804,14 +804,15 @@ Expected: fails naming the three tokens in `TOKENS` that `theming/token-referenc
 
 - [ ] **Step 2: Token reference tables**
 
-In `token-reference.mdx`, the `## Lines and radii (6)` heading becomes `## Lines and radii (8)` and its table gains two rows after `--pretable-rule-strong`:
+In `token-reference.mdx`, the `## Lines and radii (6)` heading becomes `## Lines and radii (9)` and its table gains three rows after `--pretable-rule-strong`:
 
 ```md
 | `--pretable-rule-header`    | Header row bottom border at rest                  | color  | `#e6e6eb`          | `var(--pretable-rule-strong)` | `var(--pretable-rule-strong)` |
 | `--pretable-frame`          | Container outer edge (border shorthand)           | border | `0`                | `1px solid var(--pretable-rule-strong)` | `1px solid var(--pretable-rule-strong)` |
+| `--pretable-radius-frame`   | Container corner radius                           | length | `0`                | `0`                    | `12px`                        |
 ```
 
-Update the existing rows: `--pretable-rule` pretable value to `#ececf0`; `--pretable-rule-strong` description to `Edge of lifted surfaces (menus, popovers, editor)` and pretable value to `#c2c2cb`; `--pretable-radius` pretable value to `0`.
+Update the existing rows: `--pretable-rule` pretable value to `#ececf0`; `--pretable-rule-strong` description to `Edge of lifted surfaces (menus, popovers, editor)` and pretable value to `#c2c2cb`; `--pretable-radius` description to `Radius of lifted surfaces and chips` (its pretable value stays `10px`).
 
 The `## Elevation (3)` heading becomes `## Elevation (4)` and its table gains:
 
@@ -825,7 +826,7 @@ Update `--pretable-shadow-card` pretable value to `none`. Replace the callout be
 > The `pretable` theme is frameless: `--pretable-frame` is `0`, `--pretable-shadow-card` is `none`, and the grid is one plane with the page it sits in. Its sticky header separates from the rows sliding under it with `--pretable-shadow-header`, which `grid.css` draws only while the viewport carries `data-pretable-scrolled`. Both compatibility skins draw a frame instead and set the header shadow to `none`.
 ```
 
-Update the Surfaces table's `--pretable-bg-header`, `--pretable-bg-toolbar`, `--pretable-bg-group-row` pretable values to `#f7f7f9`, `#f7f7f9`, `#fafafb`; the Text table's `--pretable-text-header` to `#6b6b76`; the Grid controls table's `--pretable-checkbox-border` to `#94949f` and `--pretable-selection-bg` to `rgba(37, 84, 207, 0.07)`. Verify each by grepping the theme, not from memory:
+Update the Surfaces table's `--pretable-bg-header`, `--pretable-bg-toolbar`, `--pretable-bg-group-row` pretable values to `#f7f7f9`, `#f7f7f9`, `#fafafb`; the Text table's `--pretable-text-header` to `#6b6b76`; the Grid controls table's `--pretable-checkbox-border` to `#8e8e99` and `--pretable-selection-bg` to `rgba(37, 84, 207, 0.07)`. Verify each by grepping the theme, not from memory:
 
 ```bash
 grep -n "bg-header\|bg-toolbar\|bg-group-row\|text-header\|checkbox-border\|selection-bg\|rule:" packages/ui/themes/pretable.css
@@ -833,13 +834,13 @@ grep -n "bg-header\|bg-toolbar\|bg-group-row\|text-header\|checkbox-border\|sele
 
 - [ ] **Step 3: The token count**
 
-The contract grows from 50 to 53. Update every prose mention:
+The contract grows from 50 to 54 (Task 3's review added `--pretable-radius-frame`). Update every prose mention:
 
 ```bash
 grep -rn "50 tokens\|50-token" apps/website/content/docs | cut -d: -f1,2
 ```
 
-Change each to `53 tokens` / `53-token`. In `theming/index.mdx` also update the grouped list: `Lines and radii (8)` adding `rule-header`, `frame`; `Elevation (4)` adding `shadow-header`; the ASCII box line `50 tokens defined` to `53 tokens defined`; and the paragraph at line 83 listing what the dark block restates to name all four of `shadow-overlay`, `shadow-card`, `shadow-header`, `seam-color`.
+Change each to `54 tokens` / `54-token`. In `theming/index.mdx` also update the grouped list: `Lines and radii (9)` adding `rule-header`, `frame`, `radius-frame`; `Elevation (4)` adding `shadow-header`; the ASCII box line `50 tokens defined` to `54 tokens defined`; and the paragraph at line 83 listing what the dark block restates to name all four of `shadow-overlay`, `shadow-card`, `shadow-header`, `seam-color`.
 
 - [ ] **Step 4: The example theme**
 
@@ -848,6 +849,7 @@ Change each to `53 tokens` / `53-token`. In `theming/index.mdx` also update the 
 ```css
   --pretable-rule-header: var(--pretable-rule-strong);
   --pretable-frame: 1px solid var(--pretable-rule-strong);
+  --pretable-radius-frame: var(--pretable-radius);
 ```
 
 and next to `--pretable-shadow-card`:
@@ -881,7 +883,7 @@ Create `.changeset/frameless-default-theme.md`:
 "@pretable/react": minor
 ---
 
-The default `pretable` theme is now frameless and neutral. The container draws no border, radius or shadow; the header rail is lighter and its resting underline is a hairline; row hairlines and the selection tint are one step lighter. The sticky header's seam against scrolling rows is a shadow drawn only while the viewport carries the new `data-pretable-scrolled` attribute, which `@pretable/react` publishes at `scrollTop > 0`. Three tokens are added to the contract: `--pretable-frame`, `--pretable-rule-header`, `--pretable-shadow-header`. Excel and Material are visually unchanged.
+The default `pretable` theme is now frameless and neutral. The container draws no border, radius or shadow; the header rail is lighter and its resting underline is a hairline; row hairlines and the selection tint are one step lighter. The sticky header's seam against scrolling rows is a shadow drawn only while the viewport carries the new `data-pretable-scrolled` attribute, which `@pretable/react` publishes at `scrollTop > 0`. Four tokens are added to the contract: `--pretable-frame`, `--pretable-radius-frame`, `--pretable-rule-header`, `--pretable-shadow-header`. Excel and Material are visually unchanged.
 ```
 
 - [ ] **Step 8: Commit**
@@ -949,7 +951,7 @@ Spec: `docs/superpowers/specs/2026-09-16-frameless-neutral-default-theme-design.
 - Contract test pins every changed literal and the 4.5:1 header-ink and 3:1 checkbox-border floors in both modes.
 - Cascade guard pins the token reads and was mutation-tested by restoring the literal frame and by deleting the scrolled rule.
 - Playwright `scrolled-seam.spec.ts` asserts the computed `box-shadow` on the real header at rest and after scroll, and the computed frame longhands on the viewport.
-- Docs guard green with the token count at 53.
+- Docs guard green with the token count at 54.
 
 Out of scope, filed separately: columns not filling the container width in the motivating screenshot.
 
