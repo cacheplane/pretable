@@ -2,17 +2,12 @@
 
 import { PretableSurface, type PretableColumn } from "@pretable/react";
 
-/**
- * Fixture for `apps/website/e2e/scrolled-seam.spec.ts`.
- *
- * One tall grid on the house theme, enough rows to scroll. The spec reads the
- * header's computed box-shadow at rest and after a scroll; jsdom cannot make
- * that claim because it computes no box-shadow from a token that a data
- * attribute rule supplies.
- */
+/** Fixture for `apps/website/e2e/scrolled-seam.spec.ts`; the rationale is there. */
 
 type Row = { id: string; name: string; amount: number };
 
+// 300 rows is >= 12,000px at the compact 40px floor against a 320px viewport,
+// so the grid always scrolls. The amount formula is arbitrary but non-uniform.
 const ROWS: Row[] = Array.from({ length: 300 }, (_, i) => ({
   id: `r${i}`,
   name: `Payment ${i}`,
