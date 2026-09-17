@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { waitForGridReady } from "./helpers";
+import { scrollViewportTo, waitForGridReady } from "./helpers";
 
 /**
  * The "Fill the viewport" section claims a row with flex columns ends exactly
@@ -38,3 +38,29 @@ for (const width of [1280, 900]) {
     expect(Math.abs(total - clientWidth)).toBeLessThanOrEqual(1);
   });
 }
+
+/**
+ * The hero's AI Analyst column flexes with `minWidthPx: 320`. At phone width
+ * the fixed columns alone exceed the viewport, so there is nothing to share;
+ * the floor must still hold there rather than the column falling back to the
+ * default wrapped width. The column sits far to the right, so the scrollport
+ * is scrolled to its end first — the header row is column-virtualized and the
+ * cell may not be drawn at scrollLeft 0.
+ */
+test("hero analyst column keeps its 320px floor at phone width", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await waitForGridReady(page);
+  const viewport = page.locator("[data-pretable-scroll-viewport]").first();
+  await scrollViewportTo(viewport, "end");
+  const analyst = viewport
+    .locator("[data-pretable-header-cell]")
+    .filter({ hasText: "AI Analyst" });
+  await expect(analyst).toHaveCount(1);
+  const width = await analyst.evaluate(
+    (el) => el.getBoundingClientRect().width,
+  );
+  expect(width).toBeGreaterThanOrEqual(320 - 1);
+});
