@@ -15,8 +15,11 @@ const TOKENS = [
   "pretable-text-dim",
   "pretable-rule",
   "pretable-rule-strong",
+  "pretable-rule-header",
+  "pretable-frame",
   "pretable-rule-vertical",
   "pretable-rule-width",
+  "pretable-radius-frame",
   "pretable-radius",
   "pretable-radius-control",
   "pretable-bg-hover",
@@ -45,6 +48,7 @@ const TOKENS = [
   "pretable-reorder-drop-indicator",
   "pretable-shadow-overlay",
   "pretable-shadow-card",
+  "pretable-shadow-header",
   "pretable-seam-color",
   "pretable-edit-bg",
   "pretable-text-error",
@@ -318,6 +322,99 @@ describe("token contract", () => {
       });
     }
   }
+
+  describe("pretable.css is frameless and neutral", () => {
+    // The literals the 2026-09-16 frameless spec chose. Pinned so a later
+    // "small tweak" cannot quietly bring the frame back.
+    const LIGHT: Record<string, string> = {
+      "--pretable-frame": "0",
+      // Not a colour, so the dark block does not restate it; pinned once.
+      "--pretable-radius-frame": "0",
+      "--pretable-shadow-card": "none",
+      "--pretable-bg-header": "#f7f7f9",
+      "--pretable-bg-toolbar": "#f7f7f9",
+      "--pretable-bg-group-row": "#fafafb",
+      "--pretable-text-header": "#6b6b76",
+      "--pretable-rule": "#ececf0",
+      "--pretable-rule-header": "#e6e6eb",
+      "--pretable-rule-strong": "#c2c2cb",
+      "--pretable-checkbox-border": "#8e8e99",
+      "--pretable-selection-bg": "rgba(37, 84, 207, 0.07)",
+    };
+    const DARK: Record<string, string> = {
+      "--pretable-frame": "0",
+      "--pretable-shadow-card": "none",
+      "--pretable-bg-header": "#1a1a20",
+      "--pretable-bg-toolbar": "#1a1a20",
+      "--pretable-bg-group-row": "#17171c",
+      "--pretable-text-header": "#8f8f9c",
+      "--pretable-rule": "#25252c",
+      "--pretable-rule-header": "#2a2a32",
+      "--pretable-rule-strong": "#3a3a44",
+      "--pretable-checkbox-border": "#6a6a78",
+      "--pretable-selection-bg": "rgba(138, 176, 255, 0.12)",
+    };
+    // [foreground token, background token, minimum ratio]. Header ink is
+    // text: 4.5:1 on the rail it sits on. The checkbox border is an
+    // affordance: 3:1 on the paper AND on the rail, because the select-all
+    // box sits on the header.
+    const FLOORS: ReadonlyArray<[string, string, number]> = [
+      ["--pretable-text-header", "--pretable-bg-header", 4.5],
+      ["--pretable-checkbox-border", "--pretable-bg-grid", 3],
+      ["--pretable-checkbox-border", "--pretable-bg-header", 3],
+    ];
+
+    for (const [mode, expected] of [
+      ["light", LIGHT],
+      ["dark", DARK],
+    ] as const) {
+      test(`literals (${mode})`, () => {
+        const cleanup = loadCSS(path.join(THEMES_DIR, "pretable.css"));
+        if (mode === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+        try {
+          const computed = getComputedStyle(document.documentElement);
+          // jsdom's CSSOM re-serialises rgba() without its spaces, so compare
+          // the two spellings with whitespace removed; the literal is still
+          // pinned to the digit, and the only whitespace in any pinned literal
+          // is inside rgba(...), so squashing cannot mask a real difference.
+          const squash = (v: string) => v.replace(/\s+/g, "");
+          for (const [token, value] of Object.entries(expected)) {
+            expect(squash(computed.getPropertyValue(token)), token).toBe(
+              squash(value),
+            );
+          }
+          expect(
+            computed.getPropertyValue("--pretable-shadow-header").trim(),
+            "the scrolled seam must exist in the house theme",
+          ).not.toBe("none");
+        } finally {
+          cleanup();
+        }
+      });
+
+      test(`contrast floors (${mode})`, () => {
+        const cleanup = loadCSS(path.join(THEMES_DIR, "pretable.css"));
+        if (mode === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+        try {
+          for (const [fgToken, bgToken, min] of FLOORS) {
+            const fg = resolveToken(fgToken);
+            const bg = resolveToken(bgToken);
+            const ratio = contrastRatio(fg, bg);
+            expect(
+              ratio,
+              `${mode}: ${fgToken} ${fg} on ${bgToken} ${bg} is ${ratio.toFixed(2)}:1, under ${min}:1`,
+            ).toBeGreaterThanOrEqual(min);
+          }
+        } finally {
+          cleanup();
+        }
+      });
+    }
+  });
 
   test("grid.css actually consumes the semantic ramp", () => {
     // The reverse of every other check in this file, and the one this project

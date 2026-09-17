@@ -1355,7 +1355,7 @@ describe("grid.css cascade contract", () => {
     const viewport = css.match(
       /:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,
     )?.[1];
-    expect(viewport).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
+    expect(viewport).toMatch(/border-radius:\s*var\(--pretable-radius-frame\)/);
   });
 
   test("grid.css styles the kit listbox the enum combobox pops open", () => {
@@ -1976,10 +1976,8 @@ describe("grid.css cascade contract", () => {
         /:where\(\[data-pretable-tool-layout\]\)\s*\{([\s\S]*?)\}/,
       )?.[1];
       expect(layout, "no [data-pretable-tool-layout] rule").toBeDefined();
-      expect(layout).toMatch(
-        /border:\s*1px solid var\(--pretable-rule-strong\)/,
-      );
-      expect(layout).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
+      expect(layout).toMatch(/border:\s*var\(--pretable-frame\)/);
+      expect(layout).toMatch(/border-radius:\s*var\(--pretable-radius-frame\)/);
       expect(layout).toMatch(/box-shadow:\s*var\(--pretable-shadow-card\)/);
       // The wrapper clips its square-cornered children to its own radius;
       // without it every child's corner pokes through the rounded frame.
@@ -2017,7 +2015,7 @@ describe("grid.css cascade contract", () => {
       expect(surrender).toMatch(/border:\s*0/);
       expect(surrender).toMatch(/border-radius:\s*0/);
       expect(surrender).toMatch(
-        /border-bottom:\s*1px solid var\(--pretable-rule-strong\)/,
+        /border-bottom:\s*1px solid var\(--pretable-rule-header\)/,
       );
     });
 
@@ -2159,6 +2157,81 @@ describe("grid.css cascade contract", () => {
       expect(css, "no dragging-row rule").toMatch(
         /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\][,\s)]/,
       );
+    });
+
+    test("the frame, the header underline and the scrolled seam each read their own token", () => {
+      // The house theme is frameless; the compatibility skins are not. The only
+      // way one stylesheet serves both is for every edge to be a token the
+      // theme can set to nothing. Four tokens, one per edge or corner, no literal 1px.
+      const css = stripped();
+      const viewport = css.match(
+        /:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(viewport, "no scroll-viewport rule").toBeDefined();
+      expect(viewport).toMatch(/border:\s*var\(--pretable-frame\)/);
+      // The container's corners are the frame's token, not the shared
+      // --pretable-radius: a frameless theme squares the container and the
+      // menus, popovers and chips keep their radius.
+      expect(viewport).toMatch(
+        /border-radius:\s*var\(--pretable-radius-frame\)/,
+      );
+
+      const panel = css.match(
+        /:where\(\[data-pretable-group-panel\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(panel, "no group-panel rule").toBeDefined();
+      expect(panel).toMatch(/border:\s*var\(--pretable-frame\)/);
+      expect(panel).toMatch(/border-bottom:\s*0/);
+      expect(panel).toMatch(
+        /border-radius:\s*var\(--pretable-radius-frame\)\s+var\(--pretable-radius-frame\)\s+0\s+0/,
+      );
+
+      const layout = css.match(
+        /:where\(\[data-pretable-tool-layout\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(layout, "no tool-layout rule").toBeDefined();
+      expect(layout).toMatch(/border-radius:\s*var\(--pretable-radius-frame\)/);
+
+      // Lookbehind skips the `error, error-strip` colour rule, whose second
+      // selector would otherwise match first.
+      const strip = css.match(
+        /(?<!,\s*):where\(\[data-pretable-body-state="error-strip"\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(strip, "no error-strip rule").toBeDefined();
+      expect(strip).toMatch(
+        /border-radius:\s*var\(--pretable-radius-frame\)\s+var\(--pretable-radius-frame\)\s+0\s+0/,
+      );
+
+      const header = css.match(
+        /:where\(\[data-pretable-header-row\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(header, "no header-row rule").toBeDefined();
+      expect(header).toMatch(
+        /border-bottom:\s*1px solid var\(--pretable-rule-header\)/,
+      );
+      expect(header).not.toMatch(/rule-strong/);
+
+      const scrolled = css.match(
+        /:where\(\s*\[data-pretable-scroll-viewport\]\[data-pretable-scrolled\]\s+\[data-pretable-header-row\]\s*\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(scrolled, "no scrolled header rule").toBeDefined();
+      expect(scrolled).toMatch(/box-shadow:\s*var\(--pretable-shadow-header\)/);
+
+      // No literal frame survives anywhere the token now governs. The
+      // selector handed to the predicate stops BEFORE the `{`, so three of
+      // the sites (tool-layout, group-panel, error-strip) anchor on
+      // end-of-selector: each name also appears as the prefix of longer
+      // combinator selectors, and the anchor keeps the sweep on the base rule.
+      const literalFrames = rulesSelecting(css, (s) =>
+        /scroll-viewport\]\)|tool-layout\]\)\s*$|group-panel\]\)\s*$|header-row\]\)|error-strip"\]\)\s*$/.test(
+          s,
+        ),
+      ).filter((m) =>
+        /border(-bottom)?:\s*1px solid var\(--pretable-rule-strong\)/.test(
+          m[2],
+        ),
+      );
+      expect(literalFrames.map((m) => m[1].trim())).toEqual([]);
     });
   });
 

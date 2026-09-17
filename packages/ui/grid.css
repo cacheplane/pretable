@@ -45,25 +45,43 @@
   }
 
   /* Outer viewport (scrollable container).
-     The card shadow lets a theme separate the grid from the host page with
-     elevation instead of a drawn frame — the frame alone cannot go faint,
-     because --pretable-rule-strong is also the sticky header's underline and
-     owes 3:1 there. Both compatibility skins set it to `none` and are
-     unchanged. */
+     The frame is a token, not a literal: the house theme is frameless and
+     sets --pretable-frame to 0, the compatibility skins set it to a 1px line.
+     The container's corners are their own token too: --pretable-radius-frame
+     rounds only the container sites (this viewport, the tool-layout wrapper,
+     the group panel, the error strip), so a frameless theme can square the
+     container without squaring the menus, popovers and chips that read
+     --pretable-radius. --pretable-rule-strong no longer takes part here — its
+     remaining consumers are the select listbox, the date popover and the
+     badge. */
   :where([data-pretable-scroll-viewport]) {
     background: var(--pretable-bg-grid);
-    border: 1px solid var(--pretable-rule-strong);
-    border-radius: var(--pretable-radius);
+    border: var(--pretable-frame);
+    border-radius: var(--pretable-radius-frame);
     box-shadow: var(--pretable-shadow-card);
     font-family: var(--pretable-font-sans);
     color: var(--pretable-text-cell);
   }
 
-  /* Header row */
+  /* Header row. The resting underline is decorative and reads
+     --pretable-rule-header; the load-bearing seam against rows scrolling
+     underneath is the shadow keyed on [data-pretable-scrolled] below. */
   :where([data-pretable-header-row]) {
     background: var(--pretable-bg-header);
-    border-bottom: 1px solid var(--pretable-rule-strong);
+    border-bottom: 1px solid var(--pretable-rule-header);
     height: var(--pretable-header-height);
+  }
+
+  /* The sticky header earns its seam only once rows pass under it. The
+     surface sets [data-pretable-scrolled] on the viewport at scrollTop > 0;
+     the header's stacking comes from the surface's inline sticky style, so
+     the shadow paints over the first row without this rule saying anything
+     about z-index. */
+  :where(
+    [data-pretable-scroll-viewport][data-pretable-scrolled]
+      [data-pretable-header-row]
+  ) {
+    box-shadow: var(--pretable-shadow-header);
   }
 
   :where([data-pretable-header-cell]) {
@@ -1199,9 +1217,9 @@
     gap: var(--pretable-cell-padding-x);
     padding: 0 var(--pretable-cell-padding-x);
     background: var(--pretable-bg-toolbar);
-    border: 1px solid var(--pretable-rule-strong);
+    border: var(--pretable-frame);
     border-bottom: 0;
-    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+    border-radius: var(--pretable-radius-frame) var(--pretable-radius-frame) 0 0;
     color: var(--pretable-text-header);
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-header);
@@ -1665,12 +1683,12 @@
   }
 
   /* The strip is a card stacked on top of the box below it, so it carries that
-     box's border and rounds only its own top. `border-bottom: 0` is what stops
-     the seam being drawn twice. */
+     box's border and rounds only its own top, with the container's radius
+     token. `border-bottom: 0` is what stops the seam being drawn twice. */
   :where([data-pretable-body-state="error-strip"]) {
-    border: 1px solid var(--pretable-rule-strong);
+    border: var(--pretable-frame);
     border-bottom: 0;
-    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+    border-radius: var(--pretable-radius-frame) var(--pretable-radius-frame) 0 0;
   }
 
   /* …and the box below squares the two corners that now meet in the middle,
@@ -1698,8 +1716,8 @@
      This is the same border redistribution the group-panel wrapper performs
      vertically, one axis over. */
   :where([data-pretable-tool-layout]) {
-    border: 1px solid var(--pretable-rule-strong);
-    border-radius: var(--pretable-radius);
+    border: var(--pretable-frame);
+    border-radius: var(--pretable-radius-frame);
     box-shadow: var(--pretable-shadow-card);
     /* The children keep square corners and the wrapper's radius clips them.
        Safe to clip: every floating grid child (menus, editors, the reorder
@@ -1718,7 +1736,7 @@
     :where([data-pretable-body-state="error-strip"]) {
     border: 0;
     border-radius: 0;
-    border-bottom: 1px solid var(--pretable-rule-strong);
+    border-bottom: 1px solid var(--pretable-rule-header);
   }
 
   /* A rail of section tabs at the grid's right edge plus a full-height pane.

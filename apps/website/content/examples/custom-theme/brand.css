@@ -19,9 +19,12 @@
   /* --- Lines and radii ---------------------------------------------------- */
   --pretable-rule: #dbe6e0; /* [!focus] */
   --pretable-rule-strong: #7c9086;
+  --pretable-rule-header: var(--pretable-rule-strong);
+  --pretable-frame: 1px solid var(--pretable-rule-strong);
   --pretable-rule-vertical: transparent;
   --pretable-rule-width: 1px;
   --pretable-radius: 8px;
+  --pretable-radius-frame: var(--pretable-radius);
   --pretable-radius-control: 5px;
 
   /* --- State --------------------------------------------------------------*/
@@ -59,6 +62,7 @@
     0 1px 2px rgba(10, 30, 22, 0.08), 0 8px 24px -6px rgba(10, 30, 22, 0.18);
   --pretable-shadow-card:
     0 1px 2px rgba(10, 30, 22, 0.06), 0 2px 8px -4px rgba(10, 30, 22, 0.12);
+  --pretable-shadow-header: none;
   --pretable-seam-color: rgba(10, 30, 22, 0.18);
 
   /* --- Density — standard tier ------------------------------------------ */
@@ -167,6 +171,7 @@
     0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -8px rgba(0, 0, 0, 0.7);
   --pretable-shadow-card:
     0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 10px -6px rgba(0, 0, 0, 0.5);
+  --pretable-shadow-header: none;
   --pretable-seam-color: rgba(0, 0, 0, 0.6);
 }
 
@@ -186,7 +191,7 @@
  * to a class keeps the theme contained to the wrapper div in
  * CustomThemeGrid.tsx without changing a single token's value.
  *
- * All 50 --pretable-* tokens are defined in this file, so it works as a
+ * All 54 --pretable-* tokens are defined in this file, so it works as a
  * starting point on its own — nothing here depends on a shipped theme
  * being imported first.
  */

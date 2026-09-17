@@ -30,11 +30,12 @@
  *   dark  — all three separate by TONE; shadows are invisible on dark ground,
  *           so tier 3 is the lightest surface in the theme.
  *
- * The container edge is a hairline plus --pretable-shadow-card, not a drawn
- * frame. --pretable-rule-strong does three jobs at once (container edge,
- * sticky-header seam, popover edge) and is the only thing separating a pinned
- * header from rows scrolling under it, so it is held at >= 3:1 against BOTH
- * the header it sits on and the grid it sits above. It is not near-white.
+ * There is no container edge. The grid is frameless: --pretable-frame is 0,
+ * --pretable-shadow-card is none, --pretable-radius-frame is 0. Embedded in a host
+ * page it is one plane with the page, separated from it by whitespace and by
+ * the header's tint alone. The sticky header's seam against rows scrolling
+ * under it is --pretable-shadow-header, drawn only while the surface reports
+ * [data-pretable-scrolled]; at rest the header ends in a decorative hairline.
  *
  * Default density: standard. Designed against a #ffffff to #f4f4f6 page.
  *
@@ -46,17 +47,18 @@
   color-scheme: light;
 
   /* --- Tier 1: chrome / the inset canvas ------------------------------- */
-  /* The header is TINTED on purpose. A white header would leave the sticky
-     rail separated from scrolling rows by tone alone at ~1.0:1, and would give
-     every hairline drawn on it nothing to read against. 1.14:1 off the data
-     surface is a whisper — enough to register as a plane, not as a fill. */
-  --pretable-bg-header: #eff0f4;
-  --pretable-bg-toolbar: #f1f1f4;
+  /* The header is TINTED on purpose, but only just. A white header would give
+     every hairline drawn on it nothing to read against; 1.07:1 off the data
+     surface is a whisper — enough to register as a plane, not as a fill. The
+     rail no longer needs the tint to separate it from rows scrolling under
+     it: that is --pretable-shadow-header's job, in Elevation below. */
+  --pretable-bg-header: #f7f7f9;
+  --pretable-bg-toolbar: #f7f7f9;
 
   /* --- Tier 1.5: structure inside the data plane ----------------------- */
   /* Group rows no longer borrow the header token. They sit between the canvas
      and the paper: heavier than a record, lighter than the rail. */
-  --pretable-bg-group-row: #f7f7f9;
+  --pretable-bg-group-row: #fafafb;
 
   /* --- Tier 2: paper / the records ------------------------------------- */
   --pretable-bg-grid: #ffffff;
@@ -74,21 +76,29 @@
      text-dim is deliberately NOT a clone of text-header — the two shipped
      themes set them to the same literal, which makes the header and the
      secondary content impossible to tune apart. Here the header is the
-     quietest text in the grid (5.61:1 on the header it sits on) because it is
-     chrome; text-dim is secondary CONTENT (6.78:1 there, 7.72:1 on the grid) and includes a 9px sort-priority badge, so it
-     gets more contrast, not less. Both clear AA on every surface they touch. */
+     quietest text in the grid (4.92:1 on the header it sits on, 5.26:1 on
+     the grid) because it is chrome; text-dim is secondary CONTENT (7.22:1 on
+     the header, 7.72:1 on the grid) and includes a 9px sort-priority badge, so
+     it gets more contrast, not less. Both clear AA on every surface they
+     touch. */
   --pretable-text-cell: #1a1a1f;
-  --pretable-text-header: #5e5e6a;
+  --pretable-text-header: #6b6b76;
   --pretable-text-dim: #52525c;
 
   /* --- Lines ----------------------------------------------------------- */
-  /* The row hairline. Decorative, so it is allowed to be faint (1.33:1). */
-  --pretable-rule: #dfdfe5;
-  /* Load-bearing. Container edge, sticky-header seam, popover edge, and the
-     boundary a pinned header presents to rows sliding underneath it.
-     3.52:1 on the header, 4.00:1 on the grid — clears the 3:1 non-text floor
-     against both of its backgrounds. Near-white here is the classic trap. */
-  --pretable-rule-strong: #7e7e8b;
+  /* The row hairline. Decorative, faint on purpose (1.18:1 on the grid). */
+  --pretable-rule: #ececf0;
+  /* The header's resting underline: one step darker than the row hairline so
+     the rail ends somewhere (1.16:1 on the header), still decorative. The
+     load-bearing seam is the scrolled shadow in Elevation below, not this
+     line. */
+  --pretable-rule-header: #e6e6eb;
+  /* One job now: the edge of the kit listbox, the date popover and the badge.
+     It no longer frames the container or underlines the header, so it no
+     longer owes 3:1 against either. 1.77:1 on the white surfaces it edges. */
+  --pretable-rule-strong: #c2c2cb;
+  /* No frame. The compatibility skins set this to a 1px line. */
+  --pretable-frame: 0;
   /* No cage. This is the single biggest visual difference from a spreadsheet,
      and it matters more as rows get taller: in a wrapped 90px row a vertical
      divider becomes a long empty channel running through whitespace. */
@@ -96,6 +106,10 @@
   --pretable-rule-width: 1px;
 
   /* --- Radii ----------------------------------------------------------- */
+  /* The container is square because it has no frame: with no edge and no
+     shadow there is no corner for a radius to round. Menus, popovers and the
+     group chips are lifted, edged surfaces and keep the 10px radius. */
+  --pretable-radius-frame: 0;
   --pretable-radius: 10px;
   --pretable-radius-control: 6px;
 
@@ -115,7 +129,7 @@
      else. The other two values live elsewhere in this block, because they do
      different jobs and cannot be one literal:
        #2554cf          the loud one — focus ring, checked checkbox, resize
-                        handle on hover, drop indicator, and at 10% the range
+                        handle on hover, drop indicator, and at 7% the range
                         tint in --pretable-selection-bg.
        --pretable-bg-selected (#dfe6fb) + --pretable-text-selected (#131826)
                         a pale blue SURFACE and its ink, behind a selected
@@ -132,8 +146,8 @@
      "and nothing else" above is guarding: the checked checkbox is painted by
      --pretable-checkbox-checked-bg (#2554cf), and the white mark on it is
      6.47:1 there without this token taking part. 7.11:1 as text on the
-     #ffffff popover the Clear button and the calendar sit on; 6.24:1 as the
-     funnel icon on the #eff0f4 header rail, where the floor is the 3:1
+     #ffffff popover the Clear button and the calendar sit on; 6.64:1 as the
+     funnel icon on the #f7f7f9 header rail, where the floor is the 3:1
      non-text one. */
   --pretable-accent: #3f5a7a;
 
@@ -168,9 +182,12 @@
   /* Written as literals rather than var() aliases so the dark block can move
      them independently — aliasing checkbox-border to rule-strong is what lets
      an affordance inherit a decorative value. */
-  --pretable-selection-bg: rgba(37, 84, 207, 0.1);
+  --pretable-selection-bg: rgba(37, 84, 207, 0.07);
   --pretable-checkbox-bg: #ffffff;
-  --pretable-checkbox-border: #787885;
+  /* An affordance, so it owes the 3:1 non-text floor on BOTH surfaces it sits
+     on: 3.24:1 on the paper, 3.03:1 on the header rail under the select-all
+     box. */
+  --pretable-checkbox-border: #8e8e99;
   --pretable-checkbox-checked-bg: #2554cf;
   --pretable-checkbox-checked-fg: #ffffff;
   --pretable-resize-handle: transparent;
@@ -184,11 +201,13 @@
      tell of a theme that was eyeballed. */
   --pretable-shadow-overlay:
     0 1px 2px rgba(16, 17, 26, 0.06), 0 8px 24px -6px rgba(16, 17, 26, 0.16);
-  /* The container. This theme does NOT draw a frame — a hairline plus real
-     elevation. Requires grid.css to apply it to the scroll viewport; without
-     that the token is inert. */
-  --pretable-shadow-card:
-    0 1px 2px rgba(16, 17, 26, 0.05), 0 2px 8px -4px rgba(16, 17, 26, 0.1);
+  /* The container casts nothing. It is not a card. */
+  --pretable-shadow-card: none;
+  /* The sticky header's seam, present only while rows are underneath it. A
+     contact layer plus a short ambient; the ambient's negative spread keeps
+     it under the first row instead of washing three rows. */
+  --pretable-shadow-header:
+    0 1px 2px rgba(16, 17, 26, 0.06), 0 6px 12px -8px rgba(16, 17, 26, 0.18);
   /* The frozen-column edge, now that pinned cells no longer announce
      themselves with a grey fill. Spread must be <= -blur/2 or the blur bleeds
      above and below each pinned cell and bands every row boundary. */
@@ -263,11 +282,11 @@
   color-scheme: dark;
 
   /* Tier 1 — chrome / the inset canvas */
-  --pretable-bg-header: #1e1e24;
-  --pretable-bg-toolbar: #1e1e24;
+  --pretable-bg-header: #1a1a20;
+  --pretable-bg-toolbar: #1a1a20;
 
   /* Tier 1.5 — structure */
-  --pretable-bg-group-row: #191920;
+  --pretable-bg-group-row: #17171c;
 
   /* Tier 2 — paper / the records */
   --pretable-bg-grid: #141418;
@@ -281,12 +300,14 @@
 
   /* Text */
   --pretable-text-cell: #ededf2;
-  --pretable-text-header: #9a9aa8;
+  --pretable-text-header: #8f8f9c; /* 5.42:1 on the header, 5.75:1 on the grid */
   --pretable-text-dim: #adadbb;
 
   /* Lines */
-  --pretable-rule: #2c2c34;
-  --pretable-rule-strong: #70707e; /* 3.40:1 on the header, 3.77:1 on the grid */
+  --pretable-rule: #25252c; /* 1.21:1 on the grid */
+  --pretable-rule-header: #2a2a32; /* 1.22:1 on the header */
+  --pretable-rule-strong: #3a3a44; /* 1.63:1 on the grid, 1.40:1 on the lifted tier */
+  --pretable-frame: 0;
   --pretable-rule-vertical: transparent;
 
   /* State */
@@ -312,9 +333,9 @@
   --pretable-info: #93b4ff;
 
   /* Grid controls */
-  --pretable-selection-bg: rgba(138, 176, 255, 0.16);
+  --pretable-selection-bg: rgba(138, 176, 255, 0.12);
   --pretable-checkbox-bg: #141418;
-  --pretable-checkbox-border: #727281;
+  --pretable-checkbox-border: #6a6a78; /* 3.45:1 on the paper, 3.25:1 on the rail */
   --pretable-checkbox-checked-bg: #8ab0ff;
   /* Dark ink, not white. White on a light-blue chip is 1.70:1 — the defect
      Material ships because it left this token out of its dark block. */
@@ -328,7 +349,8 @@
      glow; the separation comes from the tonal step above, not from the shadow. */
   --pretable-shadow-overlay:
     0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -8px rgba(0, 0, 0, 0.7);
-  --pretable-shadow-card:
-    0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 10px -6px rgba(0, 0, 0, 0.5);
+  --pretable-shadow-card: none;
+  --pretable-shadow-header:
+    0 1px 0 rgba(0, 0, 0, 0.6), 0 6px 12px -8px rgba(0, 0, 0, 0.7);
   --pretable-seam-color: rgba(0, 0, 0, 0.62);
 }

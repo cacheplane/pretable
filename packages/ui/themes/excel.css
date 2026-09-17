@@ -40,13 +40,18 @@
   /* Lines */
   --pretable-rule: #d4d4d4; /* Excel desktop default RGB 211,211,211 */
   --pretable-rule-strong: #a6a6a6;
+  --pretable-rule-header: var(
+    --pretable-rule-strong
+  ); /* Excel underlines its header with the frame colour */
+  --pretable-frame: 1px solid var(--pretable-rule-strong);
   /* Excel draws the full cage: the vertical divider tracks the horizontal rule.
      A theme that wants horizontal-only separation sets this to `transparent`.
      --pretable-rule-width only governs the per-cell row/column dividers — the
      -strong frame borders and popover/menu/editor borders are still hardcoded 1px. */
   --pretable-rule-vertical: var(--pretable-rule);
   --pretable-rule-width: 1px;
-  --pretable-radius: 0; /* Sharp edges — Excel never rounds */
+  --pretable-radius-frame: 0; /* Sharp edges — Excel never rounds */
+  --pretable-radius: 0;
   --pretable-radius-control: 0; /* Buttons and menu items don't round either */
 
   /* State */
@@ -99,6 +104,7 @@
   --pretable-shadow-overlay: 0 4px 12px rgb(0 0 0 / 0.12);
   /* No card shadow: this theme draws a frame instead. pretable.css uses it. */
   --pretable-shadow-card: none;
+  --pretable-shadow-header: none; /* The drawn underline is the seam */
   /* The frozen-column edge, as a COLOUR rather than a whole shadow: the right
      edge needs the mirror of the left one's offset, and a single shadow value
      cannot be flipped. grid.css owns the geometry — which is structural — and

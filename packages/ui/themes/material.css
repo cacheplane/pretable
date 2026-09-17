@@ -45,6 +45,8 @@
   /* Lines */
   --pretable-rule: #cccccc; /* outline-variant — decorative dividers */
   --pretable-rule-strong: #797979; /* outline */
+  --pretable-rule-header: var(--pretable-rule-strong);
+  --pretable-frame: 1px solid var(--pretable-rule-strong);
   /* Aliased to --pretable-rule so this theme's appearance is unchanged by the
      axis split. Material's own list spec has no vertical rules; revisiting that
      is a deliberate change, not a side effect of introducing the token.
@@ -52,7 +54,8 @@
      -strong frame borders and popover/menu/editor borders are still hardcoded 1px. */
   --pretable-rule-vertical: var(--pretable-rule);
   --pretable-rule-width: 1px;
-  --pretable-radius: 12px; /* M3 medium shape scale (matches Card) */
+  --pretable-radius-frame: 12px; /* M3 medium shape scale (matches Card) */
+  --pretable-radius: 12px; /* Menus and popovers share the medium scale */
   /* Small affordances need their own step: the card radius applied to a 14–18px
      control (funnel, ⋮ button, chip remove) rounds it into a circle. M3 small
      shape scale. */
@@ -113,8 +116,9 @@
      scale is named for what is lifted, not for the drag ghost that happened to
      need one first. */
   --pretable-shadow-overlay: 0 4px 12px rgb(0 0 0 / 0.12);
-  /* No card shadow: this theme draws a frame instead. pretable.css uses it. */
+  /* No card shadow: this theme draws a frame instead. */
   --pretable-shadow-card: none;
+  --pretable-shadow-header: none;
   /* The frozen-column edge, as a COLOUR rather than a whole shadow: the right
      edge needs the mirror of the left one's offset, and a single shadow value
      cannot be flipped. grid.css owns the geometry — which is structural — and

@@ -30,7 +30,7 @@ Both buttons above touch the same wrapper, and both write tokens that the theme 
 │  @pretable/ui/themes/pretable.css   │   Layer 1 (theme tokens)
 │  :root {                            │
 │    --pretable-bg-grid: #ffffff;     │
-│    --pretable-accent: #3f5a7a;      │   50 tokens defined
+│    --pretable-accent: #3f5a7a;      │   54 tokens defined
 │    ...                              │
 │  }                                  │
 └─────────────────────────────────────┘
@@ -44,7 +44,7 @@ Both buttons above touch the same wrapper, and both write tokens that the theme 
 └─────────────────────────────────────┘
 ```
 
-**Layer 1 — theme tokens.** A theme file declares all 50 `--pretable-*` tokens at `:root`. This is the single source of truth for what the grid looks like. Three ship: `themes/pretable.css` is the house theme and the default, and `themes/excel.css` and `themes/material.css` are compatibility skins for apps whose design language is already one of those. See [Pick a theme](/docs/theming/pick-a-theme).
+**Layer 1 — theme tokens.** A theme file declares all 54 `--pretable-*` tokens at `:root`. This is the single source of truth for what the grid looks like. Three ship: `themes/pretable.css` is the house theme and the default, and `themes/excel.css` and `themes/material.css` are compatibility skins for apps whose design language is already one of those. See [Pick a theme](/docs/theming/pick-a-theme).
 
 **Layer 2 — grid.css.** A selector-based stylesheet (`grid.css`) targets the engine's data attributes (`[data-pretable-scroll-viewport]`, `[data-pretable-cell]`, etc.) and applies `var(--pretable-*)` references. The engine emits the markup; this layer makes it visible.
 
@@ -52,18 +52,18 @@ Both buttons above touch the same wrapper, and both write tokens that the theme 
 
 All grid selectors ship inside a single `@layer pretable` cascade layer and are wrapped in `:where()` (zero specificity), so your overrides win without specificity tricks. See [Cascade & overrides](/docs/theming/cascade-and-overrides) for the full contract and the layer-order line for Tailwind/reset users.
 
-## The 50-token contract
+## The 54-token contract
 
-Pretable's public token contract has 50 tokens, grouped:
+Pretable's public token contract has 54 tokens, grouped:
 
 - **Surfaces (7):** `bg-grid`, `bg-grid-alt`, `bg-pinned`, `bg-group-row`, `bg-header`, `bg-toolbar`, `bg-tooltip`
 - **Text (3):** `text-cell`, `text-header`, `text-dim`
-- **Lines and radii (6):** `rule`, `rule-vertical`, `rule-width`, `rule-strong`, `radius`, `radius-control`
+- **Lines and radii (9):** `rule`, `rule-vertical`, `rule-width`, `rule-strong`, `rule-header`, `frame`, `radius-frame`, `radius`, `radius-control`
 - **State (4):** `bg-hover`, `bg-selected`, `text-selected`, `focus-ring`
 - **Editing (2):** `edit-bg`, `text-error`
 - **Accent (1):** `accent`
 - **Semantic ramp (4):** `positive`, `negative`, `warning`, `info`
-- **Elevation (3):** `shadow-overlay`, `shadow-card`, `seam-color`
+- **Elevation (4):** `shadow-overlay`, `shadow-card`, `shadow-header`, `seam-color`
 - **Density (8):** `row-height`, `header-height`, `group-panel-height`, `cell-padding-x`, `cell-padding-y`, `group-indent`, `font-size-cell`, `font-size-header`
 - **Icons (1):** `icon-size`
 - **Typography (2):** `font-sans`, `font-mono`
@@ -80,7 +80,7 @@ Two `data-*` attributes toggle runtime variants. `<html>` is the usual place for
 - **`data-theme="dark"`** — activates the `[data-theme="dark"]` block in the active theme file. `pretable` and Material both ship one; Excel is light-only, so the attribute has nothing to match and the grid stays light.
 - **`data-density="compact|standard|spacious"`** — switches density tokens. Each theme defines its own three tiers; the engine picks up the change via a `MutationObserver` on the grid element and its ancestors, re-reads the new heights, and re-renders.
 
-The two axes compose independently. `<html data-theme="dark" data-density="compact">` gives you the active theme's dark colors at its compact dimensions. Nothing has to be resolved between them: in every theme that ships both, the two blocks write disjoint sets of tokens, so neither can win or lose against the other. A dark block restates appearance — the color tokens, plus the elevation tokens, whose values are colors too (`pretable` restates all three of `--pretable-shadow-overlay`, `--pretable-shadow-card` and `--pretable-seam-color`; Material restates the first), plus — in `pretable` alone — the `color-scheme` property that steers form controls and scrollbars. The density blocks restate dimensions. No token is written by both.
+The two axes compose independently. `<html data-theme="dark" data-density="compact">` gives you the active theme's dark colors at its compact dimensions. Nothing has to be resolved between them: in every theme that ships both, the two blocks write disjoint sets of tokens, so neither can win or lose against the other. A dark block restates appearance — the color tokens, plus the elevation tokens, whose values are colors too (`pretable` restates `--pretable-shadow-overlay`, `--pretable-shadow-header` and `--pretable-seam-color`, and re-declares `--pretable-shadow-card` as `none`; Material restates the first), plus — in `pretable` alone — the `color-scheme` property that steers form controls and scrollbars. The density blocks restate dimensions. No token is written by both.
 
 ## Composition order
 
