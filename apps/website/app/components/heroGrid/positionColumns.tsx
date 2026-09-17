@@ -133,7 +133,8 @@ export function makePositionColumns(deps: PositionColumnsDeps) {
     {
       ...column.accessor("analyst", {
         header: "AI Analyst",
-        widthPx: 320,
+        flex: 1,
+        minWidthPx: 320,
         wrap: true,
         type: "text",
         render: ({ row }) => (

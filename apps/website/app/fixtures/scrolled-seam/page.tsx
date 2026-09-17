@@ -16,7 +16,7 @@ const ROWS: Row[] = Array.from({ length: 300 }, (_, i) => ({
 
 const COLUMNS: PretableColumn<Row>[] = [
   { id: "name", header: "Payment", type: "text", widthPx: 240 },
-  { id: "amount", header: "Amount", type: "number", widthPx: 140 },
+  { id: "amount", header: "Amount", type: "number", flex: 1, minWidthPx: 140 },
 ];
 
 const getRowId = (row: Row) => row.id;
