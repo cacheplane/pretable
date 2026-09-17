@@ -5141,7 +5141,11 @@ export function PretableSurface<
    * Returns false when the column renders no such control — `filterable:
    * false`, or a grid with no group panel — and when the anchor still cannot
    * be placed even after the reveal, so in both cases the key falls through
-   * instead of being swallowed into a popover that never opens.
+   * instead of being swallowed into a popover that never opens. That second
+   * case leaves one accepted wart: the page has already been scrolled by the
+   * reveal, so the fall-through then also moves focus — two side effects from
+   * one press, rare enough (an anchor that is unplaceable even when revealed)
+   * that it beats swallowing the key.
    */
   const openHeaderPopover = useCallback(
     (kind: "filter" | "menu", columnId: string): boolean => {
