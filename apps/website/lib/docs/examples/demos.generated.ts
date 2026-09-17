@@ -10,6 +10,7 @@ import type { ExampleId } from "./registry.generated";
 import asyncCellEditingDemo from "../../../content/examples/async-cell-editing/demo";
 import cellPresentationsDemo from "../../../content/examples/cell-presentations/demo";
 import columnFiltersDemo from "../../../content/examples/column-filters/demo";
+import columnFlexDemo from "../../../content/examples/column-flex/demo";
 import columnLayoutDemo from "../../../content/examples/column-layout/demo";
 import componentsButtonDemo from "../../../content/examples/components-button/demo";
 import componentsEditorsDemo from "../../../content/examples/components-editors/demo";
@@ -76,6 +77,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "async-cell-editing": asyncCellEditingDemo,
   "cell-presentations": cellPresentationsDemo,
   "column-filters": columnFiltersDemo,
+  "column-flex": columnFlexDemo,
   "column-layout": columnLayoutDemo,
   "components-button": componentsButtonDemo,
   "components-editors": componentsEditorsDemo,
