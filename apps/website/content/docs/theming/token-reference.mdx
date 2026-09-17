@@ -34,21 +34,21 @@ Pretable's public theming surface is 54 CSS variables, all `--pretable-*` prefix
 
 ## Lines and radii (9)
 
-| Token                       | Description                                       | Type   | pretable (default) | Excel                                   | Material 3 (light)                      |
-| --------------------------- | ------------------------------------------------- | ------ | ------------------ | --------------------------------------- | --------------------------------------- |
-| `--pretable-rule`           | Horizontal rule color — the hairline between rows | color  | `#ececf0`          | `#d4d4d4`                               | `#cccccc` (`outline-variant`)           |
-| `--pretable-rule-vertical`  | Vertical rule color — the divider between columns | color  | `transparent`      | `var(--pretable-rule)`                  | `var(--pretable-rule)`                  |
-| `--pretable-rule-width`     | Width of both per-cell rules                      | length | `1px`              | `1px`                                   | `1px`                                   |
-| `--pretable-rule-strong`    | Edge of lifted surfaces (menus, popovers, editor) | color  | `#c2c2cb`          | `#a6a6a6`                               | `#797979` (`outline`)                   |
-| `--pretable-rule-header`    | Header row bottom border at rest                  | color  | `#e6e6eb`          | `var(--pretable-rule-strong)`           | `var(--pretable-rule-strong)`           |
-| `--pretable-frame`          | Container outer edge (border shorthand)           | border | `0`                | `1px solid var(--pretable-rule-strong)` | `1px solid var(--pretable-rule-strong)` |
-| `--pretable-radius-frame`   | Container corner radius                           | length | `0`                | `0`                                     | `12px` (M3 medium shape)                |
-| `--pretable-radius`         | Radius of lifted surfaces and chips               | length | `10px`             | `0`                                     | `12px` (M3 medium shape)                |
-| `--pretable-radius-control` | Radius for small affordances                      | length | `6px`              | `0`                                     | `6px` (M3 small shape)                  |
+| Token                       | Description                                                                                             | Type   | pretable (default) | Excel                                   | Material 3 (light)                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- | ------ | ------------------ | --------------------------------------- | --------------------------------------- |
+| `--pretable-rule`           | Horizontal rule color — the hairline between rows                                                       | color  | `#ececf0`          | `#d4d4d4`                               | `#cccccc` (`outline-variant`)           |
+| `--pretable-rule-vertical`  | Vertical rule color — the divider between columns                                                       | color  | `transparent`      | `var(--pretable-rule)`                  | `var(--pretable-rule)`                  |
+| `--pretable-rule-width`     | Width of both per-cell rules                                                                            | length | `1px`              | `1px`                                   | `1px`                                   |
+| `--pretable-rule-strong`    | Edge of lifted surfaces (menus, popovers, editor); the frame and header rule in the compatibility skins | color  | `#c2c2cb`          | `#a6a6a6`                               | `#797979` (`outline`)                   |
+| `--pretable-rule-header`    | Header row bottom border at rest                                                                        | color  | `#e6e6eb`          | `var(--pretable-rule-strong)`           | `var(--pretable-rule-strong)`           |
+| `--pretable-frame`          | Container outer edge (border shorthand)                                                                 | border | `0`                | `1px solid var(--pretable-rule-strong)` | `1px solid var(--pretable-rule-strong)` |
+| `--pretable-radius-frame`   | Container corner radius                                                                                 | length | `0`                | `0`                                     | `12px` (M3 medium shape)                |
+| `--pretable-radius`         | Radius of lifted surfaces and chips                                                                     | length | `10px`             | `0`                                     | `12px` (M3 medium shape)                |
+| `--pretable-radius-control` | Radius for small affordances                                                                            | length | `6px`              | `0`                                     | `6px` (M3 small shape)                  |
 
 > `--pretable-rule` used to color both axes, so no theme could drop the column cage without also losing row separation. Splitting the vertical divider into its own token makes the two independent: Excel and Material alias vertical back to `--pretable-rule` and keep the full cage, while the `pretable` theme sets it to `transparent` for horizontal-only separation.
 
-> `--pretable-rule-width` governs only the per-cell row and column dividers. Popover, menu, and editor borders stay `1px` regardless, and the container edge is whatever `--pretable-frame` says — a whole border shorthand, so a theme can drop the frame with `0` or draw one with `1px solid var(--pretable-rule-strong)`.
+> `--pretable-rule-width` governs only the per-cell row and column dividers. Popover, menu, and editor borders stay `1px` regardless, and the container edge is whatever `--pretable-frame` says. That token is a whole border shorthand, so a theme drops the frame with `0` or draws one with `1px solid var(--pretable-rule-strong)`.
 
 > `--pretable-radius-frame` rounds the container, and nothing else; `--pretable-radius` rounds what is lifted or chip-shaped — the popovers, the kit listbox, and the group chips. The two are separate so a frameless theme can keep square container corners (there is no edge to round) while its popovers still stay rounded. Applying either to a 14–18px control rounds that control into a circle; `--pretable-radius-control` is the separate, smaller step those affordances take: menu items, the funnel and ⋮ buttons, and the chip remove target.
 
