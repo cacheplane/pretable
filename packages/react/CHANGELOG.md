@@ -1,5 +1,19 @@
 # @pretable/react
 
+## 0.20.0
+
+### Minor Changes
+
+- The default `pretable` theme is now frameless: no container border, radius or shadow. The header rail is lighter, its resting underline is a hairline, and row rules and the selection tint are one step lighter. While the viewport is scrolled, the sticky header separates from the rows under it with a shadow; `@pretable/react` publishes `data-pretable-scrolled` on the scroll viewport at `scrollTop > 0` to key it. ([#605](https://github.com/cacheplane/pretable/pull/605))
+
+  The token contract grows from 50 to 54: `--pretable-frame`, `--pretable-radius-frame`, `--pretable-rule-header`, `--pretable-shadow-header`. If you author your own theme, declare all four. An undeclared token resolves to nothing, so a custom theme that draws a frame today loses it until it sets `--pretable-frame`, and `--pretable-radius-frame` now owns the container corner while `--pretable-radius` rounds only popovers and chips. Excel and Material are visually unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`a89fa2e`](https://github.com/cacheplane/pretable/commit/a89fa2ef84da6a7cdd7ef87083957358158345cc)]:
+  - @pretable/ui@0.20.0
+  - @pretable/core@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes
