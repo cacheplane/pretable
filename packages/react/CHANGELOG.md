@@ -1,5 +1,14 @@
 # @pretable/react
 
+## 0.20.1
+
+### Patch Changes
+
+- A `flex` column now honours its `minWidthPx` and `maxWidthPx` even when the fixed columns already overflow the viewport, instead of falling back to the renderer's default width. ([#608](https://github.com/cacheplane/pretable/pull/608))
+- Updated dependencies []:
+  - @pretable/core@0.20.1
+  - @pretable/ui@0.20.1
+
 ## 0.20.0
 
 ### Minor Changes
