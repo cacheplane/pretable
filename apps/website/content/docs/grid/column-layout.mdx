@@ -78,13 +78,13 @@ The synthetic row-select column is always at position 0; it is never pinnable, r
 
 <Example id="column-flex" />
 
-A column that declares `flex` takes a share of whatever width the fixed columns leave. The leftover is the viewport width minus the sum of every non-flex column's width; flex columns split it in proportion to their `flex` values, and the rounding is settled on the last one so the row ends on the viewport edge rather than a pixel short. `minWidthPx` and `maxWidthPx` clamp a share, and a column with no `minWidthPx` still never drops under a 24px floor. A clamp wins over the fit: when a floor binds, the columns after it do not shrink to make room, so the row runs past the edge and the grid scrolls horizontally by the difference.
+A column that declares `flex` takes a share of whatever width the fixed columns leave. The leftover is the viewport width minus the sum of every non-flex column's width. Flex columns split it in proportion to their `flex` values; the rounding lands on the last one, so the row ends on the viewport edge rather than a pixel short. `minWidthPx` and `maxWidthPx` clamp a share, and a column with no `minWidthPx` still never drops under a 24px floor. A clamp wins over the share: a column that hits its floor takes the floor, and the flex columns after it split what is left. Only when the last flex column's floor binds does the row run past the edge; the grid then scrolls horizontally by the difference.
 
 When the fixed columns alone are wider than the viewport there is nothing to share: each flex column keeps its own width and the grid scrolls horizontally, which beats an unreadable sliver.
 
-Dragging a flex column's resize handle takes it out of the flex set: it keeps the width the drag landed on, exactly as a fixed column would, and the columns that still flex re-share the leftover around it — so the row still ends on the viewport edge as long as one flex column remains and no floor binds.
+Dragging a flex column's resize handle takes it out of the flex set: it keeps the width the drag landed on, exactly as a fixed column would. The columns that still flex re-share the leftover around it, so the row still ends on the edge as long as one flex column remains and no floor binds.
 
-Nothing flexes unless you say so. A grid whose columns are all fixed leaves the remaining width empty, which is the right default for a spreadsheet-shaped grid and the wrong one for a full-width panel; give the last column `flex: 1` in that case.
+Nothing flexes unless you say so. A grid whose columns are all fixed leaves the remaining width empty. That is the right default for a spreadsheet-shaped grid and the wrong one for a full-width panel; give the last column `flex: 1` in that case.
 
 ## Auto width
 
