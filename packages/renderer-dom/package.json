@@ -27,7 +27,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -b --pretty false && tsc -p tsconfig.typecheck.json --noEmit --pretty false"
   }

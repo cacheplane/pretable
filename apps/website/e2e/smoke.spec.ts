@@ -767,9 +767,6 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // exercise.
   const layoutViewport = layout.locator("[data-pretable-scroll-viewport]");
   const note = columnParts(layout, "note", "NVDA");
-  // `qty` is a plain scrollable column that stays rendered at both scroll
-  // extremes — it is the control that proves the scroll actually moved content.
-  const qty = columnParts(layout, "qty", "NVDA");
   await expect(note.cell).toHaveAttribute("data-pretable-pinned", "right");
   // The left-pinned side of the same grid is the regression case: its overlays
   // are placed by counting back from the column's TRAILING edge, and a
@@ -812,6 +809,9 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
             handle: edges(sel.symbol.handle),
             funnel: edges(sel.symbol.funnel),
           },
+          // `qty` is a plain scrollable column that stays rendered at both
+          // scroll extremes — the control that proves the scroll actually
+          // moved content rather than the pins merely appearing to hold.
           qtyLeft: edges(sel.qty.cell).left,
         };
       },

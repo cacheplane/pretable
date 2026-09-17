@@ -19,7 +19,7 @@
     "pretest": "pnpm run prepare:deps && pnpm run examples:gen",
     "test": "vitest run --environment jsdom",
     "smoke": "playwright test",
-    "lint": "eslint app content --ext .ts,.tsx",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

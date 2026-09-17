@@ -390,9 +390,27 @@ test.describe("activation from a focused header", () => {
     );
 
     await page.keyboard.press("Alt+ArrowDown");
-    await expect(
-      page.locator(`[data-pretable-filter-funnel][aria-expanded="true"]`),
-    ).toHaveCount(1);
+    const expanded = page.locator(
+      `[data-pretable-filter-funnel][aria-expanded="true"]`,
+    );
+    await expect(expanded).toHaveCount(1);
+
+    // The chord REVEALS its anchor before opening. Without that, whether this
+    // test passed depended on where Playwright's click auto-scroll happened to
+    // leave the header: a funnel scrolled out of the window is one the popover
+    // refuses to place, so the key was swallowed and nothing painted. Assert
+    // the funnel actually intersects the window, which is the condition the
+    // popover's own measure applies.
+    const onScreen = await expanded.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return (
+        rect.left < window.innerWidth &&
+        rect.right > 0 &&
+        rect.top < window.innerHeight &&
+        rect.bottom > 0
+      );
+    });
+    expect(onScreen).toBe(true);
 
     await page.keyboard.press("Escape");
     await expect(
@@ -415,6 +433,84 @@ test.describe("activation from a focused header", () => {
       "data-pretable-column-id",
       columnId!,
     );
+  });
+
+  test("Alt+ArrowDown reveals a header scrolled out of the window instead of swallowing the key", async ({
+    page,
+  }) => {
+    // The deterministic twin of the assertion above. That one only catches the
+    // regression when Playwright's click auto-scroll happens to leave the
+    // header off-screen — which is why it reproduced in WebKit and not in
+    // Chromium, i.e. exactly the nondeterminism this binding was fixed to
+    // remove. This test puts the header off the top of the window ON PURPOSE,
+    // so both engines exercise the reveal.
+    await mountFirstExample(page, FILTERING_DOCS);
+    await page.locator(FIRST_ROW_CELLS).nth(0).click();
+    await page.keyboard.press("ArrowUp");
+    await waitForScrollSettled(page);
+
+    const focusedHeader = page.locator(
+      "[data-pretable-scroll-viewport] [data-pretable-header-cell][data-pretable-focused='true']",
+    );
+    await expect(focusedHeader).toHaveCount(1);
+    const columnId = await focusedHeader.getAttribute(
+      "data-pretable-column-id",
+    );
+    expect(columnId).not.toBeNull();
+    const funnel = page.locator(
+      `[data-pretable-scroll-viewport] [data-pretable-filter-funnel][data-pretable-column-id="${columnId}"]`,
+    );
+    await expect(funnel).toHaveCount(1);
+
+    // Scroll the WINDOW (not the grid's scroller) far enough that the funnel
+    // is entirely above the top edge. The offset is computed from the funnel's
+    // own rect so it does not depend on the viewport size or on where the
+    // click left the page; the extra margin puts it clear of the edge rather
+    // than exactly on it.
+    await funnel.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      window.scrollTo({
+        top: window.scrollY + rect.bottom + 24,
+        behavior: "instant",
+      });
+    });
+    // `html { scroll-behavior: smooth }` on this site means the scroll above is
+    // not necessarily done in one frame, and `useHeaderPopover` closes on any
+    // window scroll — so a press issued mid-flight would be undone by the tail
+    // of this very motion.
+    await waitForScrollSettled(page);
+
+    // THE precondition. Without it the test could pass while proving nothing:
+    // if the page could not scroll that far (or the funnel moved), the press
+    // below would be an ordinary on-screen open and the reveal would never be
+    // exercised. Fail here, loudly, rather than pass vacuously.
+    const rectBefore = await funnel.evaluate(
+      (el) => el.getBoundingClientRect().bottom,
+    );
+    expect(rectBefore).toBeLessThanOrEqual(0);
+
+    // Focus never left the header — scrolling moves pixels, not the cursor.
+    await expect(focusedHeader).toHaveCount(1);
+
+    await page.keyboard.press("Alt+ArrowDown");
+    const expanded = page.locator(
+      `[data-pretable-filter-funnel][aria-expanded="true"]`,
+    );
+    await expect(expanded).toHaveCount(1);
+
+    // And the reveal is what made that possible: the anchor is back inside the
+    // window, which is the condition `useHeaderPopover`'s own measure applies
+    // before it will place a popover at all.
+    const onScreen = await expanded.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return (
+        rect.left < window.innerWidth &&
+        rect.right > 0 &&
+        rect.top < window.innerHeight &&
+        rect.bottom > 0
+      );
+    });
+    expect(onScreen).toBe(true);
   });
 
   test("Alt+ArrowDown on a DATA cell still just moves down", async ({

@@ -11,7 +11,7 @@
     "dev": "vite",
     "prebuild": "pnpm run prepare:deps",
     "build": "vite build",
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint .",
     "prepreview": "pnpm run build",
     "preview": "vite preview",
     "prepreview:bench": "pnpm run build",

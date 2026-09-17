@@ -173,7 +173,7 @@ import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import { OverlayPortal } from "./overlay/OverlayPortal";
 import { menuPopoverStyle, popoverStyle } from "./overlay/popover-position";
-import { useHeaderPopover } from "./overlay/useHeaderPopover";
+import { canPlaceAnchor, useHeaderPopover } from "./overlay/useHeaderPopover";
 import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
@@ -5128,9 +5128,24 @@ export function PretableSurface<
    * wide column instead of under the control it belongs to. The buttons are
    * `tabIndex={-1}` now, which changes nothing about where they are.
    *
+   * The anchor is REVEALED before the popover opens. A header scrolled out of
+   * the window — or horizontally past the grid's own scroll viewport — is an
+   * anchor `useHeaderPopover` refuses to place, and its layout effect would
+   * close the popover on the same pass: the key would be consumed and nothing
+   * would paint. The scroll is synchronous and `behavior: "instant"` for that
+   * reason — a smooth scroll (the docs site sets `scroll-behavior: smooth` on
+   * `html`) would still be in flight when that effect measures, so the
+   * popover would close exactly as before. `nearest` keeps an already-visible
+   * header where it is and leaves the grid's own scroller alone.
+   *
    * Returns false when the column renders no such control — `filterable:
-   * false`, or a grid with no group panel — so the key falls through instead
-   * of being swallowed into a popover that never opens.
+   * false`, or a grid with no group panel — and when the anchor still cannot
+   * be placed even after the reveal, so in both cases the key falls through
+   * instead of being swallowed into a popover that never opens. That second
+   * case leaves one accepted wart: the page has already been scrolled by the
+   * reveal, so the fall-through then also moves focus — two side effects from
+   * one press, rare enough (an anchor that is unplaceable even when revealed)
+   * that it beats swallowing the key.
    */
   const openHeaderPopover = useCallback(
     (kind: "filter" | "menu", columnId: string): boolean => {
@@ -5145,6 +5160,13 @@ export function PretableSurface<
               `[data-pretable-filter-funnel][data-pretable-column-id="${CSS.escape(columnId)}"]`,
             ) ?? null);
       if (anchor === null) return false;
+      // Optional call: jsdom implements no scrollIntoView at all.
+      anchor.scrollIntoView?.({
+        block: "nearest",
+        inline: "nearest",
+        behavior: "instant",
+      });
+      if (!canPlaceAnchor(anchor)) return false;
       togglePopover(kind, columnId, anchor);
       return true;
     },

@@ -94,6 +94,20 @@ function anchorRect(anchor: HTMLElement): DOMRect | null {
   return rect;
 }
 
+/**
+ * Can a popover be placed against this anchor at all?
+ *
+ * The single definition of the rule, shared with `anchorRect` above — which is
+ * what enforces it once a popover is OPEN (it closes on the next measure when
+ * this goes false). `openHeaderPopover` asks the same question BEFORE opening,
+ * so the keyboard path cannot swallow a key into a popover that the very next
+ * layout effect would close. One rule, one place; two copies would drift and
+ * the drift would be invisible.
+ */
+export function canPlaceAnchor(anchor: HTMLElement): boolean {
+  return anchorRect(anchor) !== null;
+}
+
 function sameRect(a: DOMRect, b: DOMRect): boolean {
   return (
     a.left === b.left &&
