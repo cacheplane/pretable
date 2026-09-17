@@ -78,7 +78,7 @@ The synthetic row-select column is always at position 0; it is never pinnable, r
 
 <Example id="column-flex" />
 
-A column that declares `flex` takes a share of whatever width the fixed columns leave. The leftover is the viewport width minus the sum of every non-flex column's width; flex columns split it in proportion to their `flex` values, and the rounding is settled on the last one so the row ends on the viewport edge rather than a pixel short. `minWidthPx` and `maxWidthPx` clamp a share, and a column with neither still never drops under a 24px floor. A clamp wins over the fit: when a floor binds, the columns after it do not shrink to make room, so the row runs past the edge and the grid scrolls horizontally by the difference.
+A column that declares `flex` takes a share of whatever width the fixed columns leave. The leftover is the viewport width minus the sum of every non-flex column's width; flex columns split it in proportion to their `flex` values, and the rounding is settled on the last one so the row ends on the viewport edge rather than a pixel short. `minWidthPx` and `maxWidthPx` clamp a share, and a column with no `minWidthPx` still never drops under a 24px floor. A clamp wins over the fit: when a floor binds, the columns after it do not shrink to make room, so the row runs past the edge and the grid scrolls horizontally by the difference.
 
 When the fixed columns alone are wider than the viewport there is nothing to share: each flex column keeps its own width and the grid scrolls horizontally, which beats an unreadable sliver.
 
