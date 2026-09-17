@@ -20,10 +20,10 @@ Run every command from the worktree root: `/Users/blove/repos/pretable/.claude/w
 
 | File | Responsibility in this change |
 |---|---|
-| `packages/ui/grid.css` | Reads three new tokens: `--pretable-frame` (viewport, tool-layout wrapper, group panel), `--pretable-rule-header` (header underline and the error-strip seam inside the tool layout), `--pretable-shadow-header` (header row when `[data-pretable-scrolled]` is present). Deletes the now-pointless corner rule. |
+| `packages/ui/grid.css` | Reads four new tokens (the fourth, `--pretable-radius-frame`, was added by Task 3's review): `--pretable-frame` (viewport, tool-layout wrapper, group panel), `--pretable-rule-header` (header underline and the error-strip seam inside the tool layout), `--pretable-shadow-header` (header row when `[data-pretable-scrolled]` is present). |
 | `packages/ui/themes/pretable.css` | Retuned literals per the spec, sets `--pretable-frame: 0`, `--pretable-shadow-card: none`, rewritten comments. |
-| `packages/ui/themes/excel.css`, `material.css` | Declare the three new tokens with today's behaviour (`--pretable-frame: 1px solid var(--pretable-rule-strong)`, `--pretable-rule-header: var(--pretable-rule-strong)`, `--pretable-shadow-header: none`). |
-| `packages/ui/src/__tests__/contract.test.ts` | Adds the three tokens to `TOKENS`; pins the house theme's literals and contrast ratios. |
+| `packages/ui/themes/excel.css`, `material.css` | Declare the four new tokens with today's behaviour (`--pretable-frame: 1px solid var(--pretable-rule-strong)`, `--pretable-rule-header: var(--pretable-rule-strong)`, `--pretable-shadow-header: none`). |
+| `packages/ui/src/__tests__/contract.test.ts` | Adds the four tokens to `TOKENS`; pins the house theme's literals and contrast ratios. |
 | `packages/ui/src/__tests__/css-cascade.test.ts` | Rewrites the frame/underline assertions; adds the scrolled-shadow rule guard. |
 | `packages/react/src/pretable-surface.tsx` | Sets `data-pretable-scrolled` on the viewport from the `onScroll` handler. |
 | `packages/react/src/__tests__/scrolled-attribute.test.tsx` | New jsdom test for the attribute. |
@@ -288,7 +288,7 @@ git commit -m "feat(ui): read the frame, header underline and header seam from t
 
 No visual change. Every edge grid.css draws on the container and the
 header now reads a token so a theme can set it to nothing. All three
-themes declare the three new tokens at today's values.
+themes declare the new tokens at today's values.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -455,7 +455,7 @@ Append to the `describe("token contract"` block in `packages/ui/src/__tests__/co
       "--pretable-rule": "#ececf0",
       "--pretable-rule-header": "#e6e6eb",
       "--pretable-rule-strong": "#c2c2cb",
-      "--pretable-checkbox-border": "#94949f",
+      "--pretable-checkbox-border": "#8e8e99",
       "--pretable-selection-bg": "rgba(37, 84, 207, 0.07)",
     };
     const DARK: Record<string, string> = {
@@ -534,7 +534,7 @@ Replace these declarations in the `:root` block (keep everything not listed):
   --pretable-rule-strong: #c2c2cb;
   --pretable-frame: 0;
   --pretable-selection-bg: rgba(37, 84, 207, 0.07);
-  --pretable-checkbox-border: #94949f;
+  --pretable-checkbox-border: #8e8e99;
   --pretable-shadow-card: none;
   --pretable-shadow-header:
     0 1px 2px rgba(16, 17, 26, 0.06), 0 6px 12px -8px rgba(16, 17, 26, 0.18);

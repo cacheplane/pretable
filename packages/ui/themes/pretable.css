@@ -93,9 +93,9 @@
      load-bearing seam is the scrolled shadow in Elevation below, not this
      line. */
   --pretable-rule-header: #e6e6eb;
-  /* One job now: the edge of lifted surfaces — menus, popovers, the editor.
+  /* One job now: the edge of the kit listbox, the date popover and the badge.
      It no longer frames the container or underlines the header, so it no
-     longer owes 3:1 against either. 1.77:1 on the white popover. */
+     longer owes 3:1 against either. 1.77:1 on the white surfaces it edges. */
   --pretable-rule-strong: #c2c2cb;
   /* No frame. The compatibility skins set this to a 1px line. */
   --pretable-frame: 0;
@@ -306,7 +306,7 @@
   /* Lines */
   --pretable-rule: #25252c; /* 1.21:1 on the grid */
   --pretable-rule-header: #2a2a32; /* 1.22:1 on the header */
-  --pretable-rule-strong: #3a3a44; /* 1.40:1 on the lifted tier it edges */
+  --pretable-rule-strong: #3a3a44; /* 1.63:1 on the grid, 1.40:1 on the lifted tier */
   --pretable-frame: 0;
   --pretable-rule-vertical: transparent;
 

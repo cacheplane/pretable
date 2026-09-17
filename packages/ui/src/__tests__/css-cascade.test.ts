@@ -2162,7 +2162,7 @@ describe("grid.css cascade contract", () => {
     test("the frame, the header underline and the scrolled seam each read their own token", () => {
       // The house theme is frameless; the compatibility skins are not. The only
       // way one stylesheet serves both is for every edge to be a token the
-      // theme can set to nothing. Three edges, three tokens, no literal 1px.
+      // theme can set to nothing. Four tokens, one per edge or corner, no literal 1px.
       const css = stripped();
       const viewport = css.match(
         /:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,

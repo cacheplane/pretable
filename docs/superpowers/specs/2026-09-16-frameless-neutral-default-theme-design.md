@@ -36,7 +36,7 @@ The scroll viewport and the group panel lose their frame entirely.
 
 Implementation choice: the `grid.css` rules stay and read tokens; the theme sets the tokens to nothing. Concretely `grid.css` keeps `border: var(--pretable-frame)` where the theme sets `--pretable-frame: 0`, `--pretable-radius-frame: 0`, and `--pretable-shadow-card: none`. This keeps the existing `css-cascade` contract that the viewport reads the frame from a token, and lets Excel and Material keep drawing theirs by setting `--pretable-frame: 1px solid var(--pretable-rule-strong)`. Container corners read a new `--pretable-radius-frame` token (viewport, tool-layout wrapper, group panel, error strip); `--pretable-radius` keeps rounding lifted surfaces and chips, since grid.css reads it on the listbox, popovers, tooltip and group chip. The house theme sets the frame radius to 0 and keeps the lifted radius at 10px; Excel sets both to 0 and Material both to 12px.
 
-`--pretable-rule-strong` is demoted to one job: the edge of lifted surfaces (menus, popovers, tooltip, the cell editor). Its comment block is rewritten to say so. Its value may lighten to `#c2c2cb` light and `#3a3a44` dark, since it no longer owes 3:1 against the header.
+`--pretable-rule-strong` is demoted to one job: the edge of the kit listbox, the date popover and the badge. Its comment block is rewritten to say so. Its value may lighten to `#c2c2cb` light and `#3a3a44` dark, since it no longer owes 3:1 against the header.
 
 ### Header
 
@@ -83,14 +83,14 @@ Nothing is removed from the public token list. Four are added: `--pretable-frame
 
 ## What does not change
 
-- Excel and Material themes. They set the three new tokens to their drawn-frame equivalents and are otherwise untouched.
+- Excel and Material themes. They set the four new tokens to their drawn-frame equivalents and are otherwise untouched.
 - Cell padding, row heights, font sizes, icon size.
 - The focus outline. The blue outline in the motivating screenshot is the focused cell and is correct.
 - Column sizing. In that screenshot the columns stop short of the container's right edge. That is a sizing default, not theming, and is filed separately rather than folded in.
 
 ## Verification
 
-- `packages/ui/src/__tests__/contract.test.ts` gains the two new tokens and re-pins every literal changed above, including the contrast ratios this spec quotes.
+- `packages/ui/src/__tests__/contract.test.ts` gains the four new tokens and re-pins every literal changed above, including the contrast ratios this spec quotes.
 - `css-cascade.test.ts` assertions that currently demand `border: 1px solid var(--pretable-rule-strong)` on the viewport, group panel, and header row are rewritten to the new token reads. Each rewritten assertion is mutation-tested by deleting the rule it guards.
 - A Playwright test scrolls a grid and asserts the header's computed `box-shadow` is non-`none` after scroll and `none` at rest, on the real component, per the prove-the-pixel rule.
 - The theming docs (`token-reference.mdx`, `custom-themes.mdx`, `index.mdx`) are updated; the token table is guard-pinned, so the guard's fixture is updated in the same change.
@@ -100,7 +100,7 @@ Nothing is removed from the public token list. Four are added: `--pretable-frame
 
 One PR, five commits in this order so each is reviewable alone:
 
-1. `grid.css`: introduce `--pretable-frame`, `--pretable-rule-header`, `--pretable-shadow-header` reads; Excel and Material set them to today's behaviour. No visual change yet.
+1. `grid.css`: introduce `--pretable-frame`, `--pretable-radius-frame`, `--pretable-rule-header`, `--pretable-shadow-header` reads; Excel and Material set them to today's behaviour. No visual change yet.
 2. `packages/react`: `data-pretable-scrolled` on the viewport, with a unit test.
 3. `pretable.css`: retune every token in the tables above, rewrite the tier and line comments, update contract tests.
 4. Playwright scrolled-seam test and docs.
