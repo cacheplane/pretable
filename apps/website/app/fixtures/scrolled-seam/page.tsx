@@ -16,6 +16,7 @@ const ROWS: Row[] = Array.from({ length: 300 }, (_, i) => ({
 
 const COLUMNS: PretableColumn<Row>[] = [
   { id: "name", header: "Payment", type: "text", widthPx: 240 },
+  // No widthPx: the renderer ignores flex when widthPx is set; the old width lives on as the floor.
   { id: "amount", header: "Amount", type: "number", flex: 1, minWidthPx: 140 },
 ];
 

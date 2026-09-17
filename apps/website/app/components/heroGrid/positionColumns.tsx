@@ -133,6 +133,7 @@ export function makePositionColumns(deps: PositionColumnsDeps) {
     {
       ...column.accessor("analyst", {
         header: "AI Analyst",
+        // No widthPx: the renderer ignores flex when widthPx is set; the old width lives on as the floor.
         flex: 1,
         minWidthPx: 320,
         wrap: true,

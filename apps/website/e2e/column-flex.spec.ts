@@ -9,6 +9,12 @@ import { scrollViewportTo, waitForGridReady } from "./helpers";
  *
  * Demos mount lazily when their figure scrolls into view, so the figure is
  * scrolled to before waiting on the grid — otherwise it never appears.
+ *
+ * Why this is a browser test and not a jsdom one: jsdom lays nothing out, so
+ * every `getBoundingClientRect().width` is 0 and the sum is vacuously wrong —
+ * it could never distinguish a row that ends on the edge from one that does
+ * not. The jsdom half — that `distributeFlexWidths` hands the drawn columns the
+ * right numbers — is `packages/react/src/__tests__/flex-columns.test.tsx`.
  */
 
 const PAGE = "/docs/grid/column-layout";
@@ -35,6 +41,8 @@ for (const width of [1280, 900]) {
       els.map((el) => el.getBoundingClientRect().width),
     );
     const total = widths.reduce((a, b) => a + b, 0);
+    // Within a pixel, not exact: a fractional device pixel ratio rounds the
+    // drawn width.
     expect(Math.abs(total - clientWidth)).toBeLessThanOrEqual(1);
   });
 }
@@ -55,12 +63,14 @@ test("hero analyst column keeps its 320px floor at phone width", async ({
   await waitForGridReady(page);
   const viewport = page.locator("[data-pretable-scroll-viewport]").first();
   await scrollViewportTo(viewport, "end");
-  const analyst = viewport
-    .locator("[data-pretable-header-cell]")
-    .filter({ hasText: "AI Analyst" });
+  const analyst = viewport.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="analyst"]',
+  );
   await expect(analyst).toHaveCount(1);
   const width = await analyst.evaluate(
     (el) => el.getBoundingClientRect().width,
   );
+  // Within a pixel, not exact: a fractional device pixel ratio rounds the
+  // drawn width.
   expect(width).toBeGreaterThanOrEqual(320 - 1);
 });
