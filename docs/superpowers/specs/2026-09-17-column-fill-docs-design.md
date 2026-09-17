@@ -6,7 +6,7 @@
 
 ## What ships
 
-1. **A live example, `column-flex`**, under `apps/website/content/examples/column-flex/`, following the examples-first authoring contract (`docs/superpowers/specs/2026-08-14-examples-first-docs.md`). Four columns: two fixed (`widthPx`), two flexible with different weights and a `minWidthPx` on the narrower one, so a reader can see both the share and the floor. The row ends exactly at the viewport edge at any page width. The caption beneath the grid names which columns flex and their weights.
+1. **A live example, `column-flex`**, under `apps/website/content/examples/column-flex/`, following the examples-first authoring contract (`docs/superpowers/specs/2026-08-14-examples-first-docs.md`). Four columns: two fixed (`widthPx`), two flexible with different weights and a `minWidthPx` on the narrower one, so a reader can see both the share and the floor. The row ends exactly at the viewport edge at every width the docs pane takes between 900px and 1600px page widths; the widths were tuned so the floor does not bind there, and the section says what happens when a floor does bind (the row overruns and scrolls by the difference). The caption beneath the grid names which columns flex and their weights.
 
 2. **A `## Fill the viewport` section in `apps/website/content/docs/grid/column-layout.mdx`**, placed directly before `## Auto width`, leading with `<Example id="column-flex" />` and then explaining, in the page's voice:
    - leftover = viewport width minus the sum of non-flex column widths; flex columns split it by weight; rounding is settled on the last flex column so the row ends on the edge, not one pixel short;
