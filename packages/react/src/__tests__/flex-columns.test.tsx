@@ -154,4 +154,34 @@ describe("flex columns", () => {
       restore();
     }
   });
+
+  it("honours a minimum even when the fixed columns already overflow", () => {
+    // Nothing is left to share, so the flex column falls back to its default
+    // width — which must still respect the floor it declared.
+    const restore = withViewportWidth(400);
+    try {
+      const { container } = render(
+        <PretableSurface<DemoRow>
+          ariaLabel="Demo"
+          columns={[
+            { id: "name", header: "name", widthPx: 500, value: (r) => r.name },
+            {
+              id: "note",
+              header: "note",
+              flex: 1,
+              minWidthPx: 320,
+              value: (r) => r.note,
+            },
+          ]}
+          rows={rows}
+          getRowId={(row) => row.id}
+          viewportHeight={200}
+        />,
+      );
+
+      expect(widthsOf(container).note).toBe(320);
+    } finally {
+      restore();
+    }
+  });
 });

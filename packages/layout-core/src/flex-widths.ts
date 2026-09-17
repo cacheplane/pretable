@@ -19,13 +19,24 @@ export interface DistributeFlexWidthsInput {
 /** Below this a column is a sliver with no room for content. */
 const FLEX_FLOOR_PX = 24;
 
+/** A flex column's floor and ceiling are its contract, whatever width it is
+ *  offered — this is the one place both are applied. */
+function clampToContract(column: FlexColumnInput, width: number): number {
+  return Math.max(
+    column.minWidthPx ?? FLEX_FLOOR_PX,
+    Math.min(column.maxWidthPx ?? Number.POSITIVE_INFINITY, width),
+  );
+}
+
 /**
  * Width overrides for the columns that declare `flex`, so a row ends exactly at
  * the viewport edge instead of leaving dead space or overflowing.
  *
- * Returns only the columns it changes — an empty object means "use the widths
- * you already had", which is the answer whenever nothing flexes, the viewport
- * is unmeasured, or the fixed columns have already consumed it.
+ * Returns only the flex columns; an empty object means nothing flexes. When
+ * the viewport is unmeasured (the SSR paint) or the fixed columns have already
+ * consumed it, each flex column keeps its own width — clamped to its
+ * `minWidthPx`/`maxWidthPx`, so the floor holds before measurement and does
+ * not jump on hydration.
  *
  * @internal
  */
@@ -35,7 +46,7 @@ export function distributeFlexWidths(
   const flexible = input.columns.filter(
     (column) => column.flex !== undefined && column.flex > 0,
   );
-  if (flexible.length === 0 || !Number.isFinite(input.viewportWidth)) {
+  if (flexible.length === 0) {
     return {};
   }
 
@@ -43,11 +54,18 @@ export function distributeFlexWidths(
     .filter((column) => column.flex === undefined || column.flex <= 0)
     .reduce((total, column) => total + column.width, 0);
   const leftover = input.viewportWidth - fixedWidth;
-  if (leftover <= 0) {
-    // Nothing to share. Keep each column's own width rather than collapsing it
-    // to the floor — the grid scrolls horizontally, which beats unreadable.
+  if (!Number.isFinite(input.viewportWidth) || leftover <= 0) {
+    // Nothing to share, or nothing measured yet. Keep each column's own width
+    // rather than collapsing it to the floor — the grid scrolls horizontally,
+    // which beats unreadable. The floor and ceiling still apply: they are the
+    // column's contract regardless of whether there is anything to share, so
+    // a column declared `{ flex: 1, minWidthPx: 320 }` never draws narrower
+    // than 320, on the server or once the fixed columns overflow.
     return Object.fromEntries(
-      flexible.map((column) => [column.id, column.width]),
+      flexible.map((column) => [
+        column.id,
+        clampToContract(column, column.width),
+      ]),
     );
   }
 
@@ -69,13 +87,14 @@ export function distributeFlexWidths(
     const target = isLast ? leftover : Math.round(idealConsumed);
     const share = target - actualConsumed;
 
-    const clamped = Math.max(
-      column.minWidthPx ?? FLEX_FLOOR_PX,
-      Math.min(column.maxWidthPx ?? Number.POSITIVE_INFINITY, share),
-    );
+    const clamped = clampToContract(column, share);
     result[column.id] = clamped;
-    // Count what was really taken: a clamped column must not make the columns
-    // after it absorb its shortfall or surplus.
+    // Count what was really taken. Because each later share is
+    // `cumulativeTarget - actualConsumed`, the columns after a clamped one DO
+    // absorb its surplus or shortfall, and the row still ends on the edge
+    // (viewport 300, fixed 100, b{flex:1,min:150}, c{flex:1} → b 150, c 50).
+    // Only a clamp on the last flex column has nobody left to absorb it, and
+    // that is the one case where the row overruns or underfills the viewport.
     actualConsumed += clamped;
   }
 
