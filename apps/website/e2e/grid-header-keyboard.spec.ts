@@ -390,9 +390,27 @@ test.describe("activation from a focused header", () => {
     );
 
     await page.keyboard.press("Alt+ArrowDown");
-    await expect(
-      page.locator(`[data-pretable-filter-funnel][aria-expanded="true"]`),
-    ).toHaveCount(1);
+    const expanded = page.locator(
+      `[data-pretable-filter-funnel][aria-expanded="true"]`,
+    );
+    await expect(expanded).toHaveCount(1);
+
+    // The chord REVEALS its anchor before opening. Without that, whether this
+    // test passed depended on where Playwright's click auto-scroll happened to
+    // leave the header: a funnel scrolled out of the window is one the popover
+    // refuses to place, so the key was swallowed and nothing painted. Assert
+    // the funnel actually intersects the window, which is the condition the
+    // popover's own measure applies.
+    const onScreen = await expanded.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return (
+        rect.left < window.innerWidth &&
+        rect.right > 0 &&
+        rect.top < window.innerHeight &&
+        rect.bottom > 0
+      );
+    });
+    expect(onScreen).toBe(true);
 
     await page.keyboard.press("Escape");
     await expect(
