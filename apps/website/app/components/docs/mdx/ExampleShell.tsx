@@ -22,6 +22,8 @@ export interface ShellFile {
 }
 
 export interface ExampleShellProps {
+  /** The example slug, exposed as `data-example-id` so specs can scope to one example. */
+  id?: string;
   title: string;
   description: string;
   height: number;
@@ -58,6 +60,7 @@ function nextTabIndex(current: number, count: number, key: NavKey): number {
 }
 
 export function ExampleShell({
+  id,
   title,
   description,
   height,
@@ -210,7 +213,10 @@ export function ExampleShell({
   }
 
   return (
-    <figure className="my-6 overflow-hidden rounded-md border border-rule bg-bg-card">
+    <figure
+      className="my-6 overflow-hidden rounded-md border border-rule bg-bg-card"
+      data-example-id={id}
+    >
       <div className="border-b border-rule px-3 py-2.5">
         <div className="text-[13px] font-semibold text-text-primary">
           {title}

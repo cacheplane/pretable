@@ -24,6 +24,7 @@ export async function Example({ id, initial }: ExampleProps) {
       // could point past the new example's file list. A `key` change forces
       // a fresh mount instead of a broken reuse.
       key={id}
+      id={id}
       title={example.meta.title}
       description={example.meta.description}
       height={example.meta.height ?? DEFAULT_EXAMPLE_HEIGHT}

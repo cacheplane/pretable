@@ -6,6 +6,7 @@
 import asyncCellEditing from "../../../content/examples/async-cell-editing/example";
 import cellPresentations from "../../../content/examples/cell-presentations/example";
 import columnFilters from "../../../content/examples/column-filters/example";
+import columnFlex from "../../../content/examples/column-flex/example";
 import columnLayout from "../../../content/examples/column-layout/example";
 import componentsButton from "../../../content/examples/components-button/example";
 import componentsEditors from "../../../content/examples/components-editors/example";
@@ -80,6 +81,10 @@ export const exampleRegistry = {
   },
   "column-filters": {
     meta: columnFilters,
+    hasDemo: true,
+  },
+  "column-flex": {
+    meta: columnFlex,
     hasDemo: true,
   },
   "column-layout": {
