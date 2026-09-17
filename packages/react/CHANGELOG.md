@@ -1,5 +1,14 @@
 # @pretable/react
 
+## 0.20.2
+
+### Patch Changes
+
+- Keyboard-opened header popovers now scroll their anchor into view before opening, so `Alt+↓` (filter) and `Shift+F10` (column menu) work when the page has scrolled the grid header out of sight instead of silently swallowing the key. ([#610](https://github.com/cacheplane/pretable/pull/610))
+- Updated dependencies []:
+  - @pretable/core@0.20.2
+  - @pretable/ui@0.20.2
+
 ## 0.20.1
 
 ### Patch Changes
