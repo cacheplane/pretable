@@ -46,8 +46,8 @@
     "@pretable-internal/grid-core": "workspace:*",
     "@pretable-internal/row-model": "workspace:*",
     "@pretable-internal/renderer-dom": "workspace:*",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "scripts": {
     "api": "api-extractor run --local --config api-extractor.json",
