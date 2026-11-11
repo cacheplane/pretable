@@ -31,17 +31,27 @@ const expectedNodeVersion = "24.19.0";
 const checkoutAction =
   "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
 const pnpmSetupAction =
-  "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86";
+  "pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413";
 const setupNodeAction =
   "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
 const changesetsAction =
-  "changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1";
+  "changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51";
 const checkoutActionSource = `${checkoutAction} # v7`;
-const pnpmSetupActionSource = `${pnpmSetupAction} # v6`;
+const pnpmSetupActionSource = `${pnpmSetupAction} # v6.1.0`;
 const setupNodeActionSource = `${setupNodeAction} # v7`;
 const expectedNpmrc =
   "auto-install-peers=true\nstrict-peer-dependencies=false\n";
-const expectedWorkspace = "packages:\n  - apps/*\n  - packages/*\n";
+const expectedWorkspace = `packages:
+  - apps/*
+  - packages/*
+# GHSA-g3hv-75wg-m249: lint and API tooling still request minimatch 10.
+# Keep overrides parent-scoped until upstream adopts the patched major.
+overrides:
+  "@eslint/config-array>minimatch": 11.0.1
+  "@microsoft/api-extractor>minimatch": 11.0.1
+  "@typescript-eslint/typescript-estree>minimatch": 11.0.1
+  "eslint>minimatch": 11.0.1
+`;
 const expectedFrozenInstall =
   "pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile";
 const expectedSecurityAuditCommand = "pnpm security:audit";

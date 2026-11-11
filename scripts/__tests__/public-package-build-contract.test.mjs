@@ -13,7 +13,7 @@ async function readJson(path) {
 
 test("root pins the reviewed builder and permanent packed-consumer gate", async () => {
   const manifest = await readJson(join(root, "package.json"));
-  assert.equal(manifest.devDependencies.tsdown, "0.22.14");
+  assert.equal(manifest.devDependencies.tsdown, "0.23.7");
   assert.ok(!Object.hasOwn(manifest.devDependencies, "tsup"));
   assert.equal(
     manifest.scripts["consumer:check"],

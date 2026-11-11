@@ -129,6 +129,35 @@ test("CodeQL grants upload permission only to the analysis job", async () => {
   });
 });
 
+test("CodeQL actions use one revision and Dependabot updates them together", async () => {
+  const actions = (await workflows()).flatMap(({ document }) =>
+    remoteUses(document).filter(({ value }) =>
+      value.startsWith("github/codeql-action/"),
+    ),
+  );
+  assert.ok(
+    actions.some(({ value }) => value.startsWith("github/codeql-action/init@")),
+  );
+  assert.ok(
+    actions.some(({ value }) =>
+      value.startsWith("github/codeql-action/analyze@"),
+    ),
+  );
+  assert.equal(
+    new Set(actions.map(({ value }) => value.split("@")[1])).size,
+    1,
+  );
+  const dependabot = parse(
+    await readFile(resolve(repoRoot, ".github/dependabot.yml"), "utf8"),
+  );
+  const updates = dependabot.updates.find(
+    (update) => update["package-ecosystem"] === "github-actions",
+  );
+  assert.deepEqual(updates.groups?.codeql?.patterns, [
+    "github/codeql-action/*",
+  ]);
+});
+
 test("release uses read-only repository contents and a step-scoped release token", async () => {
   const { document, source } = (await workflows()).find(
     ({ name }) => name === "release.yml",
