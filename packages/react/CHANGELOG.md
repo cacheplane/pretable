@@ -1,5 +1,13 @@
 # @pretable/react
 
+## 0.20.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pretable/core@0.20.3
+  - @pretable/ui@0.20.3
+
 ## 0.20.2
 
 ### Patch Changes
