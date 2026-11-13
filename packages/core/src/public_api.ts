@@ -45,6 +45,8 @@ export type {
   CreateLocalRowModelOptions,
   CreateLocalRowModelWithDefaultIdOptions,
   PretableAggregateFormatInput,
+  PretableSummaryFormatInput,
+  PretableSummaryFormatContext,
   PretableAggregateOutputOf,
   PretableAggregateSpec,
   PretableAggregator,

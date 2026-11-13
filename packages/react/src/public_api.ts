@@ -214,7 +214,11 @@ export type {
   ColumnType,
   FilterValue,
   PretableAggregateSpec,
+  PretableSummaryScope,
+  PretableEngineSummary,
   PretableAggregateFormatInput,
+  PretableSummaryFormatInput,
+  PretableSummaryFormatContext,
   PretableAggregateOutputOf,
   PretableAggregatesFor,
   PretableAggregator,
@@ -332,3 +336,11 @@ export type {
 
 export { PretableOverlayProvider } from "./overlay/portal-context";
 export type { PretableOverlayProviderProps } from "./overlay/portal-context";
+
+export type {
+  PretableSummaries,
+  PretableSummaryDescriptor,
+  PretableServerSummaryResult,
+  PretableSummaryValues,
+  PretableResolvedSummary,
+} from "./summary";

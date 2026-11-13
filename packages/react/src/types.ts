@@ -5,6 +5,7 @@ import type {
   ColumnOption,
   ColumnValueOf,
   PretableAggregateOutputOf,
+  PretableSummaryFormatInput,
   PretableAggregateSpec,
   PretableColumnAccessorKind,
   PretableColumnDefinition,
@@ -398,6 +399,12 @@ export type PretableColumnFactoryOptions<
       TAggregate
     >;
   }) => string;
+  readonly formatSummary?: (
+    input: PretableSummaryFormatInput<
+      PretableAggregateOutputOf<TAggregate, TType>,
+      PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>
+    >,
+  ) => string;
   readonly formatAggregate?: (input: {
     readonly value: PretableAggregateOutputOf<TAggregate, TType>;
     readonly column: PretableReactColumnContext<
@@ -590,6 +597,9 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   numberFormat?: Intl.NumberFormatOptions;
   /** Native calendar-date presentation; derivation and editing keep raw values. */
   dateFormat?: PretableDateFormatOptions;
+  formatSummary?: (
+    input: PretableSummaryFormatInput<unknown, PretableColumn<TRow>>,
+  ) => string;
   formatAggregate?: (input: {
     value: unknown;
     column: PretableColumn<TRow>;

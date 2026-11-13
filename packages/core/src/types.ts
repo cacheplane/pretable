@@ -55,6 +55,8 @@ export type {
   ColumnValueOf,
   ColumnsOf,
   PretableAggregateFormatInput,
+  PretableSummaryFormatInput,
+  PretableSummaryFormatContext,
   PretableAggregateOutputOf,
   PretableAggregateSpec,
   PretableAggregator,
