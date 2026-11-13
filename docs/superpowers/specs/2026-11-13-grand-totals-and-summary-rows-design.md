@@ -17,9 +17,11 @@ scope; implementation still requires review of this complete design.
 
 ## Existing foundations
 
-- `packages/row-model/src/group-index.ts` maintains separate all and filtered
-  aggregate roots for groups. These are useful mechanisms, not an existing
-  public whole-dataset summary API.
+- `packages/row-model/src/group-index.ts` has separate all and filtered
+  aggregate-root structures for groups, but only the scope selected by
+  `aggregateFilteredRows` is indexed today. Summaries must explicitly maintain
+  each requested scope; neither a second populated root nor a public
+  whole-dataset summary API exists yet.
 - `packages/row-model/src/persistent/aggregate-tree.ts` supplies scalar cells
   for sum/average/count and ordered aggregate trees for min/max/custom folds.
 - `packages/row-model/src/column-types.ts` defines typed built-in and custom
@@ -185,6 +187,35 @@ mechanisms without duplicating the full grouping index. Proposed budgets:
 
 Measure both enabled overhead and disabled-mode parity before promising a
 specific implementation or benchmark threshold.
+
+### Integration boundaries
+
+The row-model summary index belongs to the immutable revision root. It must be
+updated by transaction, full replacement, filter, sort, derivation, and authority
+transition paths, not by a React subscription that computes a second version of
+the data. A pending transition keeps the previously committed rows and summary
+consistent until the replacement revision is ready.
+
+Engine summaries require an explicit model capability. The local model can
+provide it; a supplied custom row model without the capability renders engine
+summary scopes as unavailable rather than scanning its visible rows. Server
+summary authority remains usable without that capability. Mounting, changing,
+and unmounting a summary scope must reconcile requested computation without
+recreating the row model or losing selection/edit state. Use per-consumer scope leases: each consumer retains its requested scopes and
+receives an idempotent release operation. The model computes the union of live
+requests; a surface changing scopes acquires the new lease before releasing the
+old one. No render-phase mutation. React acquires/releases after commit, handles
+StrictMode replay, and reads only committed snapshots. Headless consumers use
+the same lease contract. Disposing the model cancels outstanding computation and
+makes later release calls harmless. A pending acquisition is unavailable until
+its summary root is committed; released roots may be dropped only when no live
+lease still needs them. Held snapshots retain their original immutable values.
+
+The renderer adds summaries as siblings of the data grid within its vertical
+layout. Existing group-panel/tool-panel wrappers, flex height, scrollbar gutter,
+RTL horizontal scroll normalization, column pinning, and virtualized column
+geometry must all share the existing layout owner. Do not add a second
+independent column-width or horizontal-scroll authority.
 
 ## Verification required before implementation is complete
 
