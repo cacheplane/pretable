@@ -188,3 +188,8 @@ export {
   ɵsetLocalRowModelFilterAuthority,
   ɵsetLocalRowModelSortAuthority,
 } from "@pretable-internal/row-model";
+
+export type {
+  PretableSummaryScope,
+  PretableEngineSummary,
+} from "@pretable-internal/row-model";

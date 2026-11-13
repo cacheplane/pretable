@@ -45,3 +45,8 @@ export type {
   PretableRowIntegrityDiagnosticSink,
 } from "./row-integrity";
 export * from "./types";
+
+export type {
+  PretableSummaryScope,
+  PretableEngineSummary,
+} from "./summary-types";

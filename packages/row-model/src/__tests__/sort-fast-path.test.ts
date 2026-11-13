@@ -177,6 +177,8 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       orderNodesCopied: 0,
       groupNodesCopied: 0,
       aggregateMerges: 0,
+      summaryRowsVisited: 0,
+      summaryCellsUpdated: 0,
       transitionRows: 0,
       snapshotOutputRowsRead: 0,
       synchronousRebuilds: 0,

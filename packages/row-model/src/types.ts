@@ -1,4 +1,8 @@
 import type {
+  PretableEngineSummary,
+  PretableSummaryScope,
+} from "./summary-types";
+import type {
   ColumnIdOf,
   ColumnValueOf,
   PretableAggregatesFor,
@@ -92,6 +96,8 @@ export interface PretableRowModelSnapshot<
   TColumns,
 > {
   readonly revision: number;
+  /** Unavailable until a requested engine summary has committed. Never scans rows. */
+  getSummary?(scope: PretableSummaryScope): PretableEngineSummary | undefined;
   readonly sourceRowCount: number;
   readonly visibleRowCount: number;
   readonly visibleDataRowCount: number;
@@ -411,6 +417,8 @@ export interface PretableRowModel<
    * it never changes this presentation fallback or its identity.
    */
   getColumns(): TColumns;
+  /** Retains the union of independent consumer requests. Release is idempotent. */
+  acquireSummaryScopes?(scopes: readonly PretableSummaryScope[]): () => void;
   subscribe(listener: () => void): () => void;
 
   setRows(rows: readonly TRow[]): PretableMutationResult<TRowId>;

@@ -1017,6 +1017,8 @@ describe("bulk-build byId routing", () => {
         orderNodesCopied: 0,
         groupNodesCopied: 0,
         aggregateMerges: 0,
+        summaryRowsVisited: 0,
+        summaryCellsUpdated: 0,
         transitionRows: 0,
         synchronousRebuilds: 0,
         synchronousRebuildMs: 0,

@@ -1,3 +1,4 @@
+import { updateSummaryIndex, type SummaryIndex } from "./summary-index";
 import {
   filterVerdict,
   sortKeysOf,
@@ -85,6 +86,7 @@ export interface TransactionDraftResult<
    * ineffective drafts carry the input root's bitset unchanged.
    */
   readonly visibleSlots: RevisionRoot<TRow, TRowId, TColumns>["visibleSlots"];
+  readonly summaries?: SummaryIndex;
   readonly nextSourceOrder: number;
   readonly added: number;
   readonly updated: number;
@@ -1325,13 +1327,32 @@ export function applyFlatTransactionDraft<
     );
     if (input.instrumentation !== undefined)
       input.instrumentation.work.slotChunksTouched += chunksTouched;
+    const frozenSource = sourceDraft.freeze();
+    const summaries =
+      input.root.summaries === undefined
+        ? undefined
+        : updateSummaryIndex(
+            input.root,
+            {
+              ...input.root,
+              rows: frozenRows,
+              sourceOrder: frozenSource,
+              visible,
+              recordsBySlot,
+              visibleSlots,
+              queryPlan: input.queryPlan,
+            },
+            [...effectiveRemoves, ...prepared.map((record) => record.rowId)],
+            input.instrumentation,
+          );
     // The draft is committed as effective: removed rows are permanently gone,
     // so their slots go back to the free list (see the abandon-rule comment
     // above for why this must not happen any earlier).
     for (const record of removedRecords) input.slots.release(record.slot);
     return {
       rows: frozenRows,
-      sourceOrder: sourceDraft.freeze(),
+      sourceOrder: frozenSource,
+      summaries,
       visible,
       recordsBySlot,
       visibleSlots,
@@ -1751,12 +1772,33 @@ export function replaceFlatRowsDraft<
     );
     if (input.instrumentation !== undefined)
       input.instrumentation.work.slotChunksTouched += chunksTouched;
+    const summaries =
+      input.root.summaries === undefined
+        ? undefined
+        : updateSummaryIndex(
+            input.root,
+            {
+              ...input.root,
+              rows: frozenRows,
+              sourceOrder: frozenSource,
+              visible,
+              recordsBySlot,
+              visibleSlots,
+              queryPlan: input.queryPlan,
+            },
+            [
+              ...removedRecords.map((record) => record.rowId),
+              ...changedRecords.map((record) => record.rowId),
+            ],
+            input.instrumentation,
+          );
     // Committed as effective: retired slots not handed to new rows go back to
     // the free list (see the abandon-rule comment above).
     for (const slot of reusableRemovedSlots) input.slots.release(slot);
     return {
       rows: frozenRows,
       sourceOrder: frozenSource,
+      summaries,
       visible,
       recordsBySlot,
       visibleSlots,
