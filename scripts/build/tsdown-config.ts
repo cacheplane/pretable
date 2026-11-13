@@ -24,7 +24,7 @@ export function publicPackageConfig({
   return {
     clean: ["dist"],
     ...(deps ? { deps } : {}),
-    dts: { newContext: true, resolver: "tsc", sourcemap: true },
+    dts: { tsc: { newContext: true }, resolver: "tsc", sourcemap: true },
     entry: ["src/index.ts"],
     exports: false,
     failOnWarn: true,

@@ -1,6 +1,11 @@
+import { Blob } from "node:buffer";
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+
+// Shiki decompresses its WASM through Blob.stream(). jsdom's Blob lacks
+// streams; use the native server implementation used by our MDX loaders.
+vi.stubGlobal("Blob", Blob);
 
 // jsdom does not implement IntersectionObserver; ScrollReveal uses it.
 class MockIntersectionObserver {

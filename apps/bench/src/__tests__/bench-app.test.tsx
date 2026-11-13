@@ -530,7 +530,7 @@ describe("BenchApp", () => {
     // is DOM-only and reads the per-profile groupRowSelector, so the same
     // invariant must hold with tanstack's painted rows.
     //
-    // jsdom reports zero offsetWidth/offsetHeight and ships no
+    // jsdom reports zero clientWidth/clientHeight and ships no
     // ResizeObserver, so @tanstack/react-virtual collapses to an empty
     // viewport and paints nothing — the same shim
     // tanstack-adapter.test.tsx installs, here scoped to this test so the
@@ -545,42 +545,46 @@ describe("BenchApp", () => {
         globalThis as unknown as { ResizeObserver: typeof StubResizeObserver }
       ).ResizeObserver = StubResizeObserver;
     }
-    const baseOffsetWidth = Object.getOwnPropertyDescriptor(
+    const baseClientWidth = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
-      "offsetWidth",
+      "clientWidth",
     );
-    const baseOffsetHeight = Object.getOwnPropertyDescriptor(
+    const baseClientHeight = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
-      "offsetHeight",
+      "clientHeight",
     );
-    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
       configurable: true,
       get(this: HTMLElement) {
         if (this.hasAttribute?.("data-pretable-bench-tanstack-viewport"))
           return 720;
-        return (baseOffsetWidth?.get?.call(this) as number | undefined) ?? 0;
+        return (baseClientWidth?.get?.call(this) as number | undefined) ?? 0;
       },
     });
-    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
       configurable: true,
       get(this: HTMLElement) {
         if (this.hasAttribute?.("data-pretable-bench-tanstack-viewport"))
           return 320;
-        return (baseOffsetHeight?.get?.call(this) as number | undefined) ?? 0;
+        return (baseClientHeight?.get?.call(this) as number | undefined) ?? 0;
       },
     });
     onTestFinished(() => {
-      if (baseOffsetWidth) {
-        Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
-          ...baseOffsetWidth,
+      if (baseClientWidth) {
+        Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+          ...baseClientWidth,
           configurable: true,
         });
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
       }
-      if (baseOffsetHeight) {
-        Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
-          ...baseOffsetHeight,
+      if (baseClientHeight) {
+        Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+          ...baseClientHeight,
           configurable: true,
         });
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
       }
     });
 

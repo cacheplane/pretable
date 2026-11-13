@@ -91,8 +91,7 @@ let baseOffsetHeight: PropertyDescriptor | undefined;
 let rowHeightsStubbed = false;
 
 /**
- * jsdom reports zero offsetHeight for every element, and the `beforeAll` below
- * pins that to 0 for everything but the viewport. `@tanstack/virtual-core`'s
+ * jsdom reports zero offsetHeight for every row. `@tanstack/virtual-core`'s
  * default `measureElement` reads `element.offsetHeight`, so without this a
  * measured row measures 0 and "measurement is wired up" is indistinguishable
  * from "measurement reported nothing".
@@ -105,8 +104,7 @@ let rowHeightsStubbed = false;
  * fixture.
  */
 function stubRowHeights() {
-  // Captured on first use, i.e. after `beforeAll` has installed the bench
-  // viewport's offsetHeight getter, so restoring puts that one back.
+  // Preserve jsdom's original row measurement getter for restoration.
   baseOffsetHeight ??= Object.getOwnPropertyDescriptor(
     HTMLElement.prototype,
     "offsetHeight",
@@ -150,9 +148,9 @@ afterEach(() => {
 });
 
 beforeAll(() => {
-  // jsdom doesn't ship ResizeObserver and reports zero offsetWidth /
-  // offsetHeight for every element. @tanstack/react-virtual reads
-  // offsetWidth/offsetHeight to size the scroll element on first measure,
+  // jsdom doesn't ship ResizeObserver and reports zero clientWidth /
+  // clientHeight for every element. @tanstack/react-virtual reads
+  // clientWidth/clientHeight to size the scroll element on first measure,
   // so without a shim the virtualizer collapses to an empty viewport and
   // never emits virtual rows. We override both for the bench viewport so
   // the smoke test can verify our row/cell selectors.
@@ -166,7 +164,7 @@ beforeAll(() => {
       globalThis as unknown as { ResizeObserver: typeof StubResizeObserver }
     ).ResizeObserver = StubResizeObserver;
   }
-  Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
     configurable: true,
     get() {
       if (this.hasAttribute?.("data-pretable-bench-tanstack-viewport"))
@@ -174,7 +172,7 @@ beforeAll(() => {
       return 0;
     },
   });
-  Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
     configurable: true,
     get() {
       if (this.hasAttribute?.("data-pretable-bench-tanstack-viewport"))

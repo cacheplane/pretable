@@ -1389,6 +1389,4 @@ export function ɵsetLocalRowModelFilterAuthority(model: object, authority: "eng
 // @internal
 export function ɵsetLocalRowModelSortAuthority(model: object, authority: "engine" | "external"): void;
 
-// (No @packageDocumentation comment for this package)
-
 ```
