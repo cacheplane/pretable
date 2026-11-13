@@ -96,6 +96,9 @@ export interface PretableRowModelSnapshot<
   TColumns,
 > {
   readonly revision: number;
+  /** Canonical IDs with an aggregate in this revision's effective derivations.
+   * Available independently of summary demand; immutable and shared by a plan. */
+  readonly aggregateColumnIds?: readonly ColumnIdOf<TColumns>[];
   /** Unavailable until a requested engine summary has committed. Never scans rows. */
   getSummary?(scope: PretableSummaryScope): PretableEngineSummary | undefined;
   readonly sourceRowCount: number;

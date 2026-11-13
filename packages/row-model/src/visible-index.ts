@@ -182,6 +182,7 @@ export function createFlatSnapshot<
     return Object.freeze({
       getSummary: (scope: PretableSummaryScope) =>
         root.summaries?.results[scope],
+      aggregateColumnIds: root.queryPlan.aggregateColumnIds,
       revision: root.revision,
       sourceRowCount: root.rows.size,
       visibleRowCount: count,
@@ -228,6 +229,7 @@ export function createFlatSnapshot<
     ref.kind === "data" ? visible.rankOf(ref.rowId) : undefined;
   return Object.freeze({
     getSummary: (scope: PretableSummaryScope) => root.summaries?.results[scope],
+    aggregateColumnIds: root.queryPlan.aggregateColumnIds,
     revision: root.revision,
     sourceRowCount: root.rows.size,
     visibleRowCount: visible.size,
