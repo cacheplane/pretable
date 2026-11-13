@@ -1,8 +1,8 @@
 # Grand totals and summary rows
 
 Date: 2026-11-13
-Status: draft for discussion; not approved for implementation
-Implementation plan: pending
+Status: approved for implementation
+Implementation plan: [Plan](../plans/2026-11-13-grand-totals-and-summary-rows.md)
 
 ## Purpose
 
@@ -12,8 +12,8 @@ rows. Follow the next-feature sequence in the approved
 [calendar-date design](./2026-08-11-calendar-date-semantics-and-formatting-design.md#roadmap-consequences).
 
 The user approved both filtered and all-input totals plus explicit server-supplied
-values on 2026-11-13. The contracts below are the proposed design within that
-scope; implementation still requires review of this complete design.
+values, and a fixed bottom area with scope labels above each value row, on
+2026-11-13. The complete design and visual companion were subsequently approved for implementation.
 
 ## Existing foundations
 
@@ -236,14 +236,12 @@ independent column-width or horizontal-scroll authority.
 
 ## Design review
 
-Scope is approved: both total scopes and server-supplied values. Review the
-remaining proposed decisions together before implementation planning:
+The complete design is approved, including:
 
-1. Bottom summary area, with a caption above each value row and a separate
-   accessible summary table.
+1. Bottom area and scope labels are approved. Verify the proposed separate
+   accessible summary-table semantics during implementation.
 2. Explicit per-scope authority, keyed server answers, and visible partial/stale
    states.
 3. Existing custom-fold ordering and no new summary-copy interaction in v1.
 
-After these decisions, review the complete design before writing an
-implementation plan. No runtime code changes are part of this draft.
+Proceed with the linked implementation plan and runtime implementation.
