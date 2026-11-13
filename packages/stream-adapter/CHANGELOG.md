@@ -1,5 +1,11 @@
 # @pretable/stream-adapter
 
+## 0.20.3
+
+### Patch Changes
+
+- Update the JSON stream parser dependency to the 0.1 release line. ([#617](https://github.com/cacheplane/pretable/pull/617))
+
 ## 0.20.2
 
 ## 0.20.1
