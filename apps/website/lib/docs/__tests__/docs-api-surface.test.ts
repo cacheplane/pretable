@@ -1781,6 +1781,8 @@ function isEnumerated(binding: UnionBinding): binding is EnumeratedUnion {
  * generated, and they are free to drift apart.
  */
 const STRING_UNIONS: Record<string, UnionBinding> = {
+  "core/PretableSummaryScope": { page: "grid/api-reference.mdx" },
+  "react/PretableSummaryScope": { page: "grid/api-reference.mdx" },
   // The two the cell-presentations page spells out. `PretableBadgeTone` is the
   // load-bearing one: the page states that it has no `neutral` member and
   // explains why, so a `neutral` appearing in the union — or a `"neutral"`
