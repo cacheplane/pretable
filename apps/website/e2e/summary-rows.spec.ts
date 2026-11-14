@@ -214,5 +214,13 @@ test("native table associations survive hydration and summaries add no focus sto
   ).toBe(true);
   await page.keyboard.press("Tab");
   await expect(page.locator("[data-after-grid]")).toBeFocused();
+  // The same exit target with summaries disabled pins the baseline behavior.
+  await page
+    .getByRole("button", { name: "Toggle summaries", exact: true })
+    .click();
+  await page.locator("[data-before-grid]").focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(page.locator("[data-after-grid]")).toBeFocused();
   expect(errors).toEqual([]);
 });

@@ -257,7 +257,9 @@ export default function SummaryRowsFixturePage() {
           }
         />
       </section>
-      <button data-after-grid="">After grid</button>
+      <label>
+        After grid <input data-after-grid="" aria-label="After grid" />
+      </label>
       <output aria-label="Copied data">{copied}</output>
     </main>
   );
