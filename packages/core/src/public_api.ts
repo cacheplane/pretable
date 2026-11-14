@@ -45,6 +45,8 @@ export type {
   CreateLocalRowModelOptions,
   CreateLocalRowModelWithDefaultIdOptions,
   PretableAggregateFormatInput,
+  PretableSummaryFormatInput,
+  PretableSummaryFormatContext,
   PretableAggregateOutputOf,
   PretableAggregateSpec,
   PretableAggregator,
@@ -187,4 +189,9 @@ export type { PretableIndexedWindowing as ɵPretableIndexedWindowing } from "@pr
 export {
   ɵsetLocalRowModelFilterAuthority,
   ɵsetLocalRowModelSortAuthority,
+} from "@pretable-internal/row-model";
+
+export type {
+  PretableSummaryScope,
+  PretableEngineSummary,
 } from "@pretable-internal/row-model";

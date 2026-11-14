@@ -248,6 +248,8 @@ export interface LabeledGridSurfaceBaseProps<TRow extends PretableRow = Pretable
     // (undocumented)
     state?: PretableSurfaceProps<TRow, TRowId>["state"];
     // (undocumented)
+    summaries?: PretableSurfaceProps<TRow>["summaries"];
+    // (undocumented)
     tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
     // (undocumented)
     valueClassName?: string;
@@ -415,6 +417,8 @@ export interface PretableBaseProps<TRow extends PretableRow = PretableRow, TRowI
     rows: readonly TRow[];
     // (undocumented)
     rowSelectionColumn?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["rowSelectionColumn"];
+    // (undocumented)
+    summaries?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["summaries"];
     // (undocumented)
     tabBehavior?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["tabBehavior"];
     toolPanel?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["toolPanel"];
@@ -610,6 +614,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
         value: unknown;
     }) => string;
     // (undocumented)
+    formatSummary?: (input: PretableSummaryFormatInput<unknown, PretableColumn<TRow>>) => string;
+    // (undocumented)
     header?: string;
     // (undocumented)
     id: string;
@@ -694,6 +700,8 @@ export interface PretableColumnDefinition<TRow extends object, TId extends strin
     // (undocumented)
     readonly formatAggregate?: (input: PretableAggregateFormatInput<PretableAggregateOutputOf<TAggregate, TType>, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
     // (undocumented)
+    readonly formatSummary?: (input: PretableSummaryFormatInput<PretableAggregateOutputOf<TAggregate, TType>, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
+    // (undocumented)
     readonly header?: string;
     // (undocumented)
     readonly id: TId;
@@ -758,6 +766,7 @@ export type PretableColumnFactoryOptions<TRow extends object, TRowId extends Pre
         readonly row: TRow;
         readonly column: PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>;
     }) => string;
+    readonly formatSummary?: (input: PretableSummaryFormatInput<PretableAggregateOutputOf<TAggregate, TType>, PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>>) => string;
     readonly formatAggregate?: (input: {
         readonly value: PretableAggregateOutputOf<TAggregate, TType>;
         readonly column: PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>;
@@ -1092,6 +1101,13 @@ export type PretableEditStatus = "checking" | "editing" | "validating" | "saving
 
 // @public
 export type PretableEffectiveColumn<TColumn> = TColumn & PretableColumnVisualPresentation;
+
+// @public
+export interface PretableEngineSummary {
+    // (undocumented)
+    readonly scope: PretableSummaryScope;
+    readonly values: Readonly<Record<string, unknown>>;
+}
 
 // @public
 export function PretableEntity(input: PretableEntityProps): ReactElement;
@@ -1795,6 +1811,33 @@ export interface PretableRejectedWrites {
 }
 
 // @public
+export type PretableResolvedSummary = {
+    readonly scope: PretableSummaryScope;
+    readonly authority: "engine" | "server";
+    readonly caption: string;
+} & ({
+    readonly state: "loading";
+} | {
+    readonly state: "unavailable";
+} | {
+    readonly state: "error";
+    readonly message?: string;
+} | ({
+    readonly values: Readonly<Record<string, unknown>>;
+    readonly completeness: "complete" | "partial";
+    readonly dataScope: "all" | "loaded" | "partial";
+    readonly requestKey?: string;
+    readonly aggregateDefinitionKey?: string;
+} & ({
+    readonly state: "ready";
+} | {
+    readonly state: "stale";
+    readonly label: string;
+    readonly requestKey: string;
+    readonly aggregateDefinitionKey: string;
+})));
+
+// @public
 export interface PretableResultMeta {
     datasetKey?: string;
     // (undocumented)
@@ -1863,6 +1906,7 @@ export interface PretableRowModel<TRow extends object, TRowId extends PretableRo
         readonly rowId: TRowId;
         readonly columns: TColumns;
     };
+    acquireSummaryScopes?(scopes: readonly PretableSummaryScope[]): () => void;
     applyTransaction(transaction: PretableTransaction<TRow, TRowId>): PretableMutationResult<TRowId>;
     changesSince(revision: number): PretableChangeSequence<TRowId>;
     // (undocumented)
@@ -1927,11 +1971,13 @@ export type PretableRowModelOperation = "set-rows" | "apply-transaction" | "set-
 
 // @public (undocumented)
 export interface PretableRowModelSnapshot<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    readonly aggregateColumnIds?: readonly ColumnIdOf<TColumns>[];
     dataIndexOf(ref: PretableVisibleRowRef<TRowId>): number;
     dataRowAt(index: number): PretableDataRow<TRow, TRowId> | undefined;
     // (undocumented)
     readonly expansion: Readonly<PretableExpansionState>;
     firstDataRow(): PretableDataRow<TRow, TRowId> | undefined;
+    getSummary?(scope: PretableSummaryScope): PretableEngineSummary | undefined;
     indexOf(ref: PretableVisibleRowRef<TRowId>): number;
     // (undocumented)
     isGroupExpanded(groupId: PretableGroupId): boolean;
@@ -2073,6 +2119,21 @@ export interface PretableSelectProps extends Omit<ButtonHTMLAttributes<HTMLButto
 }
 
 // @public
+export type PretableServerSummaryResult = {
+    readonly state: "loading";
+} | {
+    readonly state: "unavailable";
+} | {
+    readonly state: "error";
+    readonly message?: string;
+} | ({
+    readonly state: "ready";
+} & PretableSummaryValues) | ({
+    readonly state: "stale";
+    readonly label: string;
+} & PretableSummaryValues);
+
+// @public
 export interface PretableSetValueInput<TRow extends object, TValue> {
     // (undocumented)
     readonly row: TRow;
@@ -2115,6 +2176,59 @@ export interface PretableStatusProps extends Omit<HTMLAttributes<HTMLSpanElement
 
 // @public
 export type PretableStatusTone = "positive" | "negative" | "warning" | "info" | "neutral";
+
+// @public
+export type PretableSummaries = Readonly<Partial<Record<PretableSummaryScope, PretableSummaryDescriptor>>>;
+
+// @public
+export type PretableSummaryDescriptor = {
+    readonly authority: "engine";
+    readonly label?: string;
+    readonly completeness?: "complete" | "partial";
+} | {
+    readonly authority: "server";
+    readonly label?: string;
+    readonly requestKey: string;
+    readonly aggregateDefinitionKey: string;
+    readonly result: PretableServerSummaryResult;
+};
+
+// @public
+export interface PretableSummaryFormatContext {
+    // (undocumented)
+    readonly authority: "engine" | "server";
+    // (undocumented)
+    readonly completeness: "complete" | "partial";
+    // (undocumented)
+    readonly scope: "filtered" | "all";
+    // (undocumented)
+    readonly state: "ready" | "stale";
+}
+
+// @public (undocumented)
+export interface PretableSummaryFormatInput<TValue, TColumn> {
+    // (undocumented)
+    readonly column: TColumn;
+    // (undocumented)
+    readonly summary: PretableSummaryFormatContext;
+    // (undocumented)
+    readonly value: TValue;
+}
+
+// @public
+export type PretableSummaryScope = "filtered" | "all";
+
+// @public
+export interface PretableSummaryValues {
+    // (undocumented)
+    readonly aggregateDefinitionKey: string;
+    // (undocumented)
+    readonly completeness: "complete" | "partial";
+    // (undocumented)
+    readonly requestKey: string;
+    // (undocumented)
+    readonly values: Readonly<Record<string, unknown>>;
+}
 
 // @public
 export function PretableSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
@@ -2261,6 +2375,28 @@ export interface PretableSurfaceMessages {
     // (undocumented)
     selectAllLabel?: (args: {
         scope: "all" | "loaded";
+    }) => string;
+    // (undocumented)
+    summaryCaption?: (input: {
+        scope: "filtered" | "all";
+        loaded: boolean;
+    }) => string;
+    // (undocumented)
+    summaryLoadedLabel?: () => string;
+    // (undocumented)
+    summaryMissingValue?: () => string;
+    // (undocumented)
+    summaryPartialLabel?: () => string;
+    // (undocumented)
+    summaryServerLabel?: () => string;
+    // (undocumented)
+    summaryStaleLabel?: (input: {
+        label: string;
+    }) => string;
+    // (undocumented)
+    summaryStateMessage?: (input: {
+        state: "loading" | "unavailable" | "error";
+        message?: string;
     }) => string;
     toolPanelAddFilterLabel?: () => string;
     toolPanelAddGroupLabel?: () => string;
@@ -2507,6 +2643,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     // (undocumented)
     selectFocusedRowOnArrowKey?: boolean;
     state?: PretableSurfaceState<TRowId, TColumns> | null;
+    summaries?: PretableSummaries;
     tabBehavior?: "wrap-rows" | "exit";
     toolPanel?: boolean | PretableToolPanelConfig;
     // (undocumented)

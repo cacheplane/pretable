@@ -51,6 +51,9 @@ import {
   useResolvedComponents,
   type PretableComponents,
 } from "./components/context";
+import { SummaryRows } from "./summary-rows";
+import { useSummary } from "./use-summary";
+import type { PretableSummaries } from "./summary";
 import type { PretableLocale } from "./locale";
 import type {
   PretableCellRenderInput,
@@ -153,6 +156,11 @@ import {
   insertGroupLevel,
   removeGroupLevel,
 } from "./group-panel/group-panel-model";
+
+const EMPTY_SUMMARY_ELIGIBILITY = {
+  summaryAggregateIds: new Set<string>(),
+  summaryEligibleColumns: [] as readonly never[],
+};
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
 import {
@@ -582,6 +590,19 @@ export interface RowSelectionColumnConfig {
  * @public
  */
 export interface PretableSurfaceMessages {
+  summaryCaption?: (input: {
+    scope: "filtered" | "all";
+    loaded: boolean;
+  }) => string;
+  summaryServerLabel?: () => string;
+  summaryLoadedLabel?: () => string;
+  summaryPartialLabel?: () => string;
+  summaryStaleLabel?: (input: { label: string }) => string;
+  summaryStateMessage?: (input: {
+    state: "loading" | "unavailable" | "error";
+    message?: string;
+  }) => string;
+  summaryMissingValue?: () => string;
   selectAllLabel?: (args: { scope: "all" | "loaded" }) => string;
   selectAllAnnouncement?: (args: {
     rowCount: number;
@@ -1189,6 +1210,8 @@ export interface PretableSurfaceSharedProps<
   processing?: PretableProcessingOptions;
   /** Metadata describing the full result represented by the loaded rows. */
   resultMeta?: PretableResultMeta;
+  /** Fixed read-only totals, independently configured for matching and all input rows. */
+  summaries?: PretableSummaries;
   /** Consumer-owned presentation lifecycle for loaded data. */
   dataState?: PretableDataState;
   renderBodyState?: (input: {
@@ -1861,6 +1884,7 @@ export function PretableSurface<
   locale,
   processing,
   resultMeta,
+  summaries,
   dataState,
   renderBodyState,
   allColumnsAutoWidth,
@@ -2045,6 +2069,20 @@ export function PretableSurface<
   // nothing and be silently undefined at the first call site that wanted it.
   const effectiveMessages = useMemo<Required<PretableSurfaceMessages>>(
     () => ({
+      summaryCaption:
+        messages?.summaryCaption ?? defaultMessages.summaryCaption,
+      summaryServerLabel:
+        messages?.summaryServerLabel ?? defaultMessages.summaryServerLabel,
+      summaryLoadedLabel:
+        messages?.summaryLoadedLabel ?? defaultMessages.summaryLoadedLabel,
+      summaryPartialLabel:
+        messages?.summaryPartialLabel ?? defaultMessages.summaryPartialLabel,
+      summaryStaleLabel:
+        messages?.summaryStaleLabel ?? defaultMessages.summaryStaleLabel,
+      summaryStateMessage:
+        messages?.summaryStateMessage ?? defaultMessages.summaryStateMessage,
+      summaryMissingValue:
+        messages?.summaryMissingValue ?? defaultMessages.summaryMissingValue,
       selectAllLabel:
         messages?.selectAllLabel ?? defaultMessages.selectAllLabel,
       selectAllAnnouncement:
@@ -2435,9 +2473,33 @@ export function PretableSurface<
     viewportRef,
   );
   const groupPanelHeight = groupPanelEnabled ? resolvedGroupPanelHeight : 0;
-  const scrollViewportHeight = Math.max(viewportHeight - groupPanelHeight, 0);
+  const summaryCount = Number(!!summaries?.filtered) + Number(!!summaries?.all);
+  const [summaryMeasurement, setSummaryMeasurement] = useState({
+    count: 0,
+    height: 0,
+  });
+  const summaryHeight =
+    summaryCount === 0
+      ? 0
+      : summaryMeasurement.count === summaryCount
+        ? summaryMeasurement.height
+        : summaryCount * (28 + rowHeightFloor);
+  const onSummaryHeightChange = useCallback(
+    (height: number) => {
+      setSummaryMeasurement((previous) =>
+        previous.count === summaryCount && previous.height === height
+          ? previous
+          : { count: summaryCount, height },
+      );
+    },
+    [summaryCount],
+  );
+  const scrollViewportHeight = Math.max(
+    viewportHeight - groupPanelHeight - summaryHeight,
+    0,
+  );
   const bodyViewportHeight = Math.max(
-    viewportHeight - headerHeight - groupPanelHeight,
+    viewportHeight - headerHeight - groupPanelHeight - summaryHeight,
     0,
   );
   // Depend on the primitive fields, not the rowSelectionColumn object: callers
@@ -5237,6 +5299,58 @@ export function PretableSurface<
     return map;
   }, [drawnColumns, effectiveColumns]);
 
+  const summarySnapshot = renderSnapshot.modelSnapshot ?? rowModelSnapshot;
+  const { summaryAggregateIds, summaryEligibleColumns } = useMemo(() => {
+    if (summaryCount === 0) return EMPTY_SUMMARY_ELIGIBILITY;
+    // Metadata belongs to the committed derivations, independently of summary
+    // demand: even server-only scopes must follow direct setDerivations calls.
+    const effectiveIds = summarySnapshot.aggregateColumnIds;
+    const ids = new Set<string>(effectiveIds);
+    const eligible = authoritativeColumns.filter((column) => {
+      if (effectiveIds !== undefined) return ids.has(column.id);
+      // Compatibility for custom models without aggregate metadata. Engine
+      // answers can still describe a newer aggregate vocabulary than schema.
+      const override = indexedSnapshot.columnAggregates[column.id];
+      if ((override === undefined ? column.aggregate : override) != null)
+        ids.add(column.id);
+      return (
+        ids.has(column.id) ||
+        (["filtered", "all"] as const).some(
+          (scope) =>
+            summaries?.[scope]?.authority === "engine" &&
+            Object.hasOwn(
+              summarySnapshot.getSummary?.(scope)?.values ?? {},
+              column.id,
+            ),
+        )
+      );
+    });
+    return { summaryAggregateIds: ids, summaryEligibleColumns: eligible };
+  }, [
+    authoritativeColumns,
+    indexedSnapshot.columnAggregates,
+    summaries,
+    summaryCount,
+    summarySnapshot,
+  ]);
+  const summaryLoadedOnly =
+    resultMeta?.window !== undefined ||
+    ((resultMeta?.total?.kind === "exact" ||
+      resultMeta?.total?.kind === "estimate") &&
+      resultMeta.total.count > summarySnapshot.sourceRowCount) ||
+    (resultMeta?.total?.kind === "unknown" &&
+      (resultMeta.total.atLeast ?? 0) > summarySnapshot.sourceRowCount) ||
+    processing?.filter === "external" ||
+    processing?.sort === "external";
+  const resolvedSummaries = useSummary({
+    model: indexed.rowModel,
+    snapshot: summarySnapshot,
+    summaries,
+    columns: summaryEligibleColumns,
+    processing,
+    loadedOnly: summaryLoadedOnly,
+  });
+
   // One plan over the whole DRAWN column set, shared by the two features that
   // need to reason about columns `renderSnapshot.columns` does not carry:
   // reorder hit-testing (a scrolled-out column is still a legitimate drop
@@ -8007,7 +8121,7 @@ export function PretableSurface<
     </div>
   );
 
-  // Without the group panel the vertical stack IS the scroll viewport — no
+  // Without the group panel or summaries the stack IS the scroll viewport — no
   // wrapper, so a consumer's DOM, CSS selectors and layout are untouched by
   // SP3 existing.
   //
@@ -8016,28 +8130,51 @@ export function PretableSurface<
   // `role="grid"`/`"treegrid"` (whose children must be rows and rowgroups, so a
   // listbox of chips there is invalid ARIA) and `minWidth: totalWidth` on its
   // content, which would scroll the panel sideways with the data.
-  const verticalStack = !groupPanelEnabled ? (
-    viewportWithDataState
-  ) : (
-    <div
-      data-pretable-group-panel-wrapper=""
-      style={getGroupPanelWrapperStyle(viewportHeight)}
-    >
-      <GroupPanel
-        containerRef={groupPanelRef}
-        // Only a header drag reports in from out here; the panel's own chip
-        // drag tracks its insertion index internally.
-        dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
-        emptyMessage={groupPanel?.emptyMessage}
-        focusManagedExternally
-        height={groupPanelHeight}
-        labelForColumn={labelForColumn}
-        onChange={applyRowGroups}
-        rowGroups={snapshot.rowGroups}
-      />
-      {viewportWithDataState}
-    </div>
-  );
+  const verticalStack =
+    !groupPanelEnabled && summaryCount === 0 ? (
+      viewportWithDataState
+    ) : (
+      <div
+        data-pretable-group-panel-wrapper={groupPanelEnabled ? "" : undefined}
+        data-pretable-summary-wrapper={summaryCount > 0 ? "" : undefined}
+        style={getGroupPanelWrapperStyle(viewportHeight)}
+      >
+        {groupPanelEnabled ? (
+          <GroupPanel
+            containerRef={groupPanelRef}
+            // Only a header drag reports in from out here; the panel's own chip
+            // drag tracks its insertion index internally.
+            dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
+            emptyMessage={groupPanel?.emptyMessage}
+            focusManagedExternally
+            height={groupPanelHeight}
+            labelForColumn={labelForColumn}
+            onChange={applyRowGroups}
+            rowGroups={snapshot.rowGroups}
+          />
+        ) : null}
+        {viewportWithDataState}
+        {summaryCount > 0 && summaries ? (
+          <SummaryRows
+            summaries={resolvedSummaries}
+            descriptors={summaries}
+            columnCount={drawnColumns.length}
+            columns={renderSnapshot.columns}
+            columnsById={columnsById}
+            aggregateIds={summaryAggregateIds}
+            viewportRef={viewportRef}
+            viewportWidth={viewportWidth}
+            totalWidth={renderSnapshot.totalWidth}
+            rowHeight={rowHeightFloor}
+            liveWidth={dragLiveWidth}
+            valueFormatters={valueFormatters}
+            messages={effectiveMessages}
+            loadedOnly={summaryLoadedOnly}
+            onHeightChange={onSummaryHeightChange}
+          />
+        ) : null}
+      </div>
+    );
 
   // `sections: []` means "no sections" — rail hidden, pane closed, the panel
   // effectively off (spec: equivalent to `toolPanel={false}`, reachable from a

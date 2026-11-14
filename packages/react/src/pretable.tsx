@@ -147,6 +147,7 @@ export interface PretableBaseProps<
   processing?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["processing"];
   /** Server-supplied result metadata: dataset identity and matching total. */
   resultMeta?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["resultMeta"];
+  summaries?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["summaries"];
   /** The data lifecycle phase driving the body-state blocks. */
   dataState?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["dataState"];
   /** Reports the query the engine now holds. `<Pretable>` never accepts

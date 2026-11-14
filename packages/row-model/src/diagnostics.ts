@@ -21,6 +21,10 @@ export interface LocalRowModelWorkDiagnostics {
    */
   readonly groupNodesCopied: number;
   readonly aggregateMerges: number;
+  /** Source records visited by summary construction or delta maintenance. */
+  readonly summaryRowsVisited: number;
+  /** Aggregate leaf insertions/removals, including scalar cells. */
+  readonly summaryCellsUpdated: number;
   readonly transitionRows: number;
   /** Sort-only rebuilds taken synchronously, bypassing the cooperative path. */
   readonly synchronousRebuilds: number;
@@ -139,6 +143,8 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       orderNodesCopied: 0,
       groupNodesCopied: 0,
       aggregateMerges: 0,
+      summaryRowsVisited: 0,
+      summaryCellsUpdated: 0,
       transitionRows: 0,
       synchronousRebuilds: 0,
       synchronousRebuildMs: 0,
@@ -172,6 +178,8 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "orderNodesCopied",
     "groupNodesCopied",
     "aggregateMerges",
+    "summaryRowsVisited",
+    "summaryCellsUpdated",
     "transitionRows",
     "synchronousRebuilds",
     "synchronousRebuildMs",

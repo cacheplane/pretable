@@ -138,6 +138,20 @@ export interface PretableFormatInput<
   readonly column: TColumn;
 }
 
+/** Framework-neutral context for a whole-input aggregate. @public */
+export interface PretableSummaryFormatContext {
+  readonly scope: "filtered" | "all";
+  readonly authority: "engine" | "server";
+  readonly completeness: "complete" | "partial";
+  readonly state: "ready" | "stale";
+}
+/** @public */
+export interface PretableSummaryFormatInput<TValue, TColumn> {
+  readonly value: TValue;
+  readonly column: TColumn;
+  readonly summary: PretableSummaryFormatContext;
+}
+
 /** @public */
 export interface PretableAggregateFormatInput<TValue, TColumn> {
   readonly value: TValue;
@@ -192,6 +206,12 @@ export interface PretableColumnDefinition<
     input: PretableFormatInput<
       TRow,
       TValue,
+      PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>
+    >,
+  ) => string;
+  readonly formatSummary?: (
+    input: PretableSummaryFormatInput<
+      PretableAggregateOutputOf<TAggregate, TType>,
       PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>
     >,
   ) => string;
@@ -269,6 +289,12 @@ export type PretableColumnOptions<
       TAggregate
     >;
   }) => string;
+  readonly formatSummary?: (
+    input: PretableSummaryFormatInput<
+      PretableAggregateOutputOf<TAggregate, TType>,
+      PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>
+    >,
+  ) => string;
   readonly formatAggregate?: (input: {
     readonly value: PretableAggregateOutputOf<TAggregate, TType>;
     readonly column: PretableColumnCallbackContext<
@@ -334,6 +360,12 @@ export interface PretableColumnHelper<TRow extends object> {
           TAggregate
         >;
       }) => string;
+      readonly formatSummary?: (
+        input: PretableSummaryFormatInput<
+          PretableAggregateOutputOf<TAggregate, TType>,
+          PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>
+        >,
+      ) => string;
       readonly formatAggregate?: (input: {
         readonly value: PretableAggregateOutputOf<TAggregate, TType>;
         readonly column: PretableColumnCallbackContext<

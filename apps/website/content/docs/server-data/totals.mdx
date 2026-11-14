@@ -44,7 +44,7 @@ Both halves of that comparison are read from the same commit, so committing rows
 
 ## Exporting under external authority
 
-The other half of what a total buys is what the grid will call "all rows", and that is a question with one answer per grid rather than one per feature: every user-facing count label and every CSV file routes through `resolveDataScope`.
+The other half of what a total buys is what the grid will call "all rows", and the existing export and group-count labels use `resolveDataScope` to answer it. Summary rows have their own, more conservative completeness rules, described below; an exact row count never upgrades an engine summary into a complete server answer.
 
 ```ts
 import { resolveDataScope, type DataHonestyInput } from "@pretable/react";
@@ -66,6 +66,90 @@ That is why the example above flips as it does. The same 480 rows are on screen 
 A `"loaded"` scope is not a failure state. It is what puts the `unloaded-rows` omission into a serialized file and `-PARTIAL` into its filename, so the person who pressed the button learns that the file is a window. Hardcoding `"all"` does not make an export complete; it only stops it saying that it is not. The full picture — `serializeCsv`, the omissions list, and the `exportCsv` handle that resolves the scope for you — is on [CSV export](/docs/grid/export), which links back here for this half of it, as does [Clipboard](/docs/grid/clipboard) for the group aggregates it scopes the same way.
 
 Those aggregates have a second thing to know about them under this authority, and it is about the number rather than the scope label. Declaring external filtering stops the engine applying `query.filters` at all, so there is no post-filter subset left for a group to fold — [aggregates and child counts cover every loaded row](/docs/server-data/query-ownership#what-suppression-does-not-cover), whichever way `aggregateFilteredRows` is set. Correct, when the server is the one that chose the records; different, from what the same grid reports under engine filtering.
+
+## Summary answers
+
+Row counts and aggregate answers are independent claims. Use `summaries` for
+aggregate values, with independent `filtered` and `all` descriptors. An engine
+scope uses loaded model input; a server scope uses only the answer you supply.
+The grid does not fetch, generate request keys, or silently replace an unavailable
+server answer with a loaded calculation.
+
+A ready server answer must match both the descriptor's `requestKey` and
+`aggregateDefinitionKey`. A deliberately stale answer retains its **original**
+request key and requires a nonblank visible label. Its aggregate definition must
+still match: values calculated under a different reducer or column meaning are
+unavailable even if marked stale. Mismatched ready keys also produce unavailable.
+
+```tsx
+import type {
+  PretableSummaries,
+  PretableServerSummaryResult,
+} from "@pretable/react";
+
+const requestKey = "dataset-7:auth-2:revision-42:filter-design:sum-v1";
+const aggregateDefinitionKey = "hours:number:sum:v1";
+
+const ready: PretableServerSummaryResult = {
+  state: "ready",
+  requestKey,
+  aggregateDefinitionKey,
+  completeness: "complete",
+  values: { hours: 120 },
+};
+const stale: PretableServerSummaryResult = {
+  state: "stale",
+  requestKey: "dataset-7:auth-2:revision-41:filter-all:sum-v1",
+  aggregateDefinitionKey,
+  completeness: "complete",
+  label: "Previous filter, before the latest update",
+  values: { hours: 360 },
+};
+const loading: PretableServerSummaryResult = { state: "loading" };
+const error: PretableServerSummaryResult = {
+  state: "error",
+  message: "Summary could not be loaded",
+};
+const unavailable: PretableServerSummaryResult = { state: "unavailable" };
+
+// Your request lifecycle chooses ready, stale, loading, error, or unavailable.
+const summaries: PretableSummaries = {
+  filtered: {
+    authority: "server",
+    requestKey,
+    aggregateDefinitionKey,
+    result: ready,
+  },
+  all: { authority: "engine", completeness: "partial" },
+};
+```
+
+Applications own invalidation. Change the request key for relevant filters,
+dataset identity, authorization context, data revisions, aggregate overrides,
+and sort/order revisions when reducers depend on order. Change the definition
+key when effective aggregate definitions or column value semantics change.
+Capture keys when a request starts and return those same keys with its answer;
+do not relabel an old response with the current keys. A view's labels, column
+widths, or formatting are presentation changes, not aggregate definitions.
+
+Every ready or stale server result explicitly declares `completeness` as
+`"complete"` or `"partial"`. A partial server computation is displayed as partial;
+it is not described as a loaded-row computation. Engine summaries under external
+filter **or sort** authority, known windowed input, or an explicit
+`completeness: "partial"` are described as loaded rows. Even an exact
+`resultMeta.total` equal to the loaded row count cannot upgrade them. For partial
+input the grid cannot infer, set `completeness: "partial"` yourself. A custom
+`label` replaces the scope caption, so make it truthful about the population.
+
+`all` means all supplied input for engine authority; the application must define
+the corresponding server population. `filtered` means matching input before
+collapse, not currently rendered rows. Missing aggregate keys display as
+unavailable, while an explicit `null` is a valid empty result. Keys must be
+canonical column IDs with an effective aggregate; unknown IDs are ignored.
+
+See [summary rendering, formatting, and headless leases](/docs/grid/grouping#grand-totals-and-summary-rows)
+for a runnable both-scope example. Summary rows are read-only and are not
+automatically included in clipboard or CSV output.
 
 ## See also
 
