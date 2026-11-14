@@ -39,7 +39,7 @@ const columns = [
 The tuple preserves row, column-ID, value, filter, editor, formatter, and
 aggregate correlations. Column options include typed accessors, `header`,
 `type`, sorting and filtering behavior, layout fields, `dateFormat`,
-`numberFormat`, `format`, `aggregate`, `formatAggregate`, editing hooks, and
+`numberFormat`, `format`, `aggregate`, `formatAggregate`, `formatSummary`, editing hooks, and
 React `render` / `renderEditor` callbacks. A `type: "date"` accessor accepts
 only `string | null` values.
 
@@ -89,7 +89,7 @@ query, aggregate, precedence, SSR, and migration rules.
 
 Rows with a conventional string or number `id` do not require `getRowId`. Otherwise it is required, and omitting it is a compile error rather than a runtime failure. This is one contract across every entry point that takes rows — `<Pretable>`, `<PretableSurface>`, `usePretable`, `useLocalRowModel`, and `createLocalRowModel` all treat the accessor the same way. Identity survives row-array replacements and is used by selection, focus, editing, expansion, and transactions.
 
-Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `locale`, `state`, `onSelectionChange`, `onRowSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `csvOptions`, `onExport`, `saveFile`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
+Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `locale`, `state`, `onSelectionChange`, `onRowSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `csvOptions`, `onExport`, `saveFile`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, `summaries`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
 
 The `processing`, `resultMeta`, `dataState`, and `renderBodyState` props describe external filter/sort authority, total and dataset identity, and consumer-owned loading/error presentation. They do not move row or query ownership into the UI grid: the query is still published, reported, and reflected in the header exactly as before. What `processing.filter: "external"` does change, in rows mode only, is that the engine stops applying `query.filters` to the rows it was handed; `processing.sort` suppresses nothing, and an explicit model decides its own query. See [Server-side data](/docs/server-data) for the complete contract.
 
@@ -150,3 +150,13 @@ interface SerializeRangesArgs<TRow, TRowId, TColumns> {
 - `isValidDateValue` / `PretableDateFormatOptions` — strict calendar-date validation and native display options.
 
 For framework-independent control, see the [headless API](/docs/headless/api-reference).
+
+## Summary contracts
+
+`PretableSummaries` maps optional `filtered` and `all` scopes to independent
+`PretableSummaryDescriptor` values. Server descriptors carry a
+`PretableServerSummaryResult` with explicit keys and completeness for ready/stale
+answers. Core exposes `PretableSummaryScope`, `PretableEngineSummary`,
+`PretableSummaryFormatInput`, and `PretableSummaryFormatContext`. See
+[summary rows and headless leases](/docs/grid/grouping#grand-totals-and-summary-rows)
+and [server answer provenance](/docs/server-data/totals#summary-answers).

@@ -64,6 +64,7 @@ import serverQueryOwnershipDemo from "../../../content/examples/server-query-own
 import serverTotalsDemo from "../../../content/examples/server-totals/demo";
 import serverWindowingDemo from "../../../content/examples/server-windowing/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
+import summaryRowsDemo from "../../../content/examples/summary-rows/demo";
 import themingCompositionOrderDemo from "../../../content/examples/theming-composition-order/demo";
 import tokenAwareToolbarDemo from "../../../content/examples/token-aware-toolbar/demo";
 import tokenOverrideLiveDemo from "../../../content/examples/token-override-live/demo";
@@ -131,6 +132,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "server-totals": serverTotalsDemo,
   "server-windowing": serverWindowingDemo,
   "streaming-chat-grid": streamingChatGridDemo,
+  "summary-rows": summaryRowsDemo,
   "theming-composition-order": themingCompositionOrderDemo,
   "token-aware-toolbar": tokenAwareToolbarDemo,
   "token-override-live": tokenOverrideLiveDemo,

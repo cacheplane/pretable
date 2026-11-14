@@ -20,7 +20,7 @@ applications are a proving ground, not the product boundary.
 
 ## Current baseline
 
-The aligned public-package baseline is `0.20.2`. The shipped grid includes local
+The aligned public-package baseline is `0.20.3`. The shipped grid includes local
 sorting and typed filtering, selection, keyboard navigation, copy and validated
 bulk paste, typed asynchronous editing, column virtualization and layout,
 configurable row grouping and aggregation, variable-height rows, and batched
@@ -42,17 +42,17 @@ See the current [core changelog](packages/core/CHANGELOG.md),
 [React API report](packages/react/react.api.md), and
 [committed comparative benchmark evidence](status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json).
 
-## Now — design grand totals and summary rows
+## Now — grand totals and summary rows awaiting merge
 
-- Define grand totals and summary rows as a general analytical-grid primitive,
-  following the sequence in the approved
-  [calendar-date design](docs/superpowers/specs/2026-08-11-calendar-date-semantics-and-formatting-design.md#roadmap-consequences).
-- Resolve aggregation scope (all rows, filtered rows, or an externally supplied
-  result), rendering and accessibility, streaming invalidation, and performance
-  budgets in a focused design before implementation. These are design questions,
-  not promised public APIs.
-- Preserve existing correctness, 60 Hz, zero-gap, and interaction-continuity
-  gates while extending representative workloads.
+Grand totals and summary rows are implemented in this development branch and
+awaiting merge; they are not part of the shipped `0.20.3` baseline. The
+[approved design](docs/superpowers/specs/2026-11-13-grand-totals-and-summary-rows-design.md)
+covers independent filtered/all-input scopes, engine or keyed server authority,
+headless leases, cached aggregates, and read-only summary rendering.
+
+Preserve existing correctness, 60 Hz, zero-gap, and interaction-continuity gates
+while completing validation and release review. Package changelogs remain the
+source of truth for when the feature ships.
 
 ## Next — saved views and local history
 

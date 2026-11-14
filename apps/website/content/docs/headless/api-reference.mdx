@@ -104,3 +104,14 @@ The two modes are mutually exclusive at the type level.
 - [Snapshot & subscribe](/docs/headless/state-model) — indexed row-model and UI-state snapshots.
 - [Actions](/docs/headless/mutations) — query, transaction, expansion, selection, and layout commands.
 - [Grid API reference](/docs/grid/api-reference) — React surface and presentation contracts.
+
+## Optional summary capabilities
+
+`model.acquireSummaryScopes?.(["filtered", "all"])` returns an idempotent release
+function. Subscribe for asynchronous acquisition and read raw cached values with
+`snapshot.getSummary?.(scope)`; `undefined` means unavailable. Optional
+`snapshot.aggregateColumnIds` lists the canonical columns with effective
+aggregates in that revision, independently of summary demand. Custom models can
+omit these capabilities. See [headless summary leases](/docs/grid/grouping#headless-summary-leases)
+for lifecycle and disposal, and [summary rows](/docs/grid/grouping#grand-totals-and-summary-rows)
+for population semantics.
