@@ -169,14 +169,14 @@ jobs:
       # sees as a blank page, so it is worth more than the trace on a failure.
       - name: Upload dev server log on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: website-dev-server-log
           path: /tmp/next-dev.log
           retention-days: 7
       - name: Upload Playwright traces on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: website-dev-smoke-traces
           path: apps/website/test-results/
@@ -255,14 +255,14 @@ jobs:
         run: pnpm bench:e2e -- --workers=1
       - name: Upload the bench preview server log on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: bench-preview-server-log
           path: /tmp/bench-preview.log
           retention-days: 7
       - name: Upload the Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: bench-playwright-report
           path: |
@@ -411,7 +411,7 @@ jobs:
         run: pnpm --filter @pretable/app-website smoke
       - name: Upload smoke artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: website-smoke-traces
           path: apps/website/test-results/
@@ -595,7 +595,7 @@ jobs:
         run: pnpm --filter @pretable/app-website smoke
       - name: Upload Playwright traces on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: website-preview-traces
           path: apps/website/test-results/
