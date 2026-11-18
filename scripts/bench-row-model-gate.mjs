@@ -10,6 +10,8 @@ import {
   waitForOwnedServer,
 } from "./owned-preview.mjs";
 
+import { collectFrameCadence, validateFrameCadence } from "./frame-cadence.mjs";
+
 const DEFAULT_SEED = 505;
 const EXPECTED_PATCHES = 3_000;
 
@@ -32,7 +34,7 @@ export function createRowModelGateEntries({ seed = DEFAULT_SEED } = {}) {
 
 export function validateRowModelGateSummaries(
   summaries,
-  { seed = DEFAULT_SEED, startedAt },
+  { seed = DEFAULT_SEED, startedAt, calibration },
 ) {
   if (!Array.isArray(summaries)) throw new TypeError("Summaries are required.");
   const expectedEntries = createRowModelGateEntries({ seed });
@@ -149,10 +151,15 @@ export function validateRowModelGateSummaries(
     }
   }
 
+  const frameCadence = validateFrameCadence(calibration, {
+    startedAt,
+    summaries: selected,
+  });
+
   for (const summary of selected.filter(
     (candidate) => candidate.scriptName === "updates-grouped",
   )) {
-    assertAtMost(summary, "scroll_frame_p95_ms", 16);
+    assertAtMost(summary, "scroll_frame_p95_ms", frameCadence.budgetMs);
     assertEqual(summary, "long_tasks_count", 0);
     assertEqual(summary, "scroll_position_drift_px", 0);
     assertEqual(summary, "visible_row_count_drift", 0);
@@ -184,6 +191,7 @@ export function validateRowModelGateSummaries(
   return Object.freeze({
     status: "ready-for-performance-gate",
     seed,
+    frameCadence,
     summary:
       "Deterministic harness artifacts are complete; Task 22 evaluates performance claims.",
     runs: Object.freeze(
@@ -201,7 +209,7 @@ export function validateRowModelGateSummaries(
 
 function assertAtMost(summary, metricId, threshold) {
   const value = summary.metrics?.[metricId];
-  if (typeof value !== "number" || value > threshold) {
+  if (!Number.isFinite(value) || value > threshold) {
     throw new Error(
       `${metricId} must be <= ${threshold}; received ${String(value)}.`,
     );
@@ -238,14 +246,22 @@ async function run() {
   const summaries = [];
   try {
     await waitForOwnedServer(baseUrl, server);
+    const calibration = await collectFrameCadence();
+    const reportDir = path.join(workspaceDir, "status", "runsets");
+    await mkdir(reportDir, { recursive: true });
+    await writeFile(
+      path.join(reportDir, "row-model-frame-cadence.json"),
+      `${JSON.stringify(calibration, null, 2)}\n`,
+    );
+    validateFrameCadence(calibration, { startedAt, summaries: [] });
     for (const entry of createRowModelGateEntries({ seed })) {
       summaries.push(await runEntry(entry, workspaceDir, baseUrl));
     }
     const report = validateRowModelGateSummaries(summaries, {
       seed,
       startedAt,
+      calibration,
     });
-    const reportDir = path.join(workspaceDir, "status", "runsets");
     const reportPath = path.join(reportDir, "row-model-gate.json");
     await mkdir(reportDir, { recursive: true });
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -262,10 +278,11 @@ async function runEntry(entry, workspaceDir, baseUrl) {
   const before = new Set(await collectSummaries(statusDir));
   await runCommand({
     command: "pnpm",
-    args: ["bench:e2e"],
+    args: ["bench:e2e", "--workers=1"],
     cwd: workspaceDir,
     env: {
       ...process.env,
+      PRETABLE_BENCH_ROW_MODEL_GATE: "1",
       PRETABLE_BENCH_BASE_URL: baseUrl,
       PRETABLE_BENCH_EXTERNAL_SERVER: "1",
       PRETABLE_BENCH_ADAPTER: entry.adapterId,

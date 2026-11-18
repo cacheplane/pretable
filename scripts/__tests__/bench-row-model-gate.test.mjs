@@ -115,6 +115,7 @@ test("accepts a complete comparable four-run milestone without making a performa
   const report = validateRowModelGateSummaries(passingSummaries(), {
     seed: 91_337,
     startedAt,
+    calibration: calibrationFixture(),
   });
 
   assert.equal(report.status, "ready-for-performance-gate");
@@ -128,6 +129,7 @@ test("rejects missing, mismatched, incomplete, and stale summaries", () => {
       validateRowModelGateSummaries(passingSummaries().slice(0, 3), {
         seed: 91_337,
         startedAt,
+        calibration: calibrationFixture(),
       }),
     /missing/i,
   );
@@ -137,7 +139,7 @@ test("rejects missing, mismatched, incomplete, and stale summaries", () => {
         passingSummaries().map((summary, index) =>
           index === 3 ? { ...summary, browserVersion: "different" } : summary,
         ),
-        { seed: 91_337, startedAt },
+        { seed: 91_337, startedAt, calibration: calibrationFixture() },
       ),
     /comparable/i,
   );
@@ -147,7 +149,7 @@ test("rejects missing, mismatched, incomplete, and stale summaries", () => {
         passingSummaries().map((summary, index) =>
           index === 0 ? { ...summary, status: "partial" } : summary,
         ),
-        { seed: 91_337, startedAt },
+        { seed: 91_337, startedAt, calibration: calibrationFixture() },
       ),
     /completed/i,
   );
@@ -159,7 +161,7 @@ test("rejects missing, mismatched, incomplete, and stale summaries", () => {
             ? { ...summary, timestamp: "2026-08-11T17:59:59.000Z" }
             : summary,
         ),
-        { seed: 91_337, startedAt },
+        { seed: 91_337, startedAt, calibration: calibrationFixture() },
       ),
     /stale/i,
   );
@@ -173,7 +175,7 @@ test("rejects a uniformly wrong permanent-job identity", () => {
           ...summary,
           adapterId: "not-pretable",
         })),
-        { seed: 91_337, startedAt },
+        { seed: 91_337, startedAt, calibration: calibrationFixture() },
       ),
     /adapter/i,
   );
@@ -182,7 +184,7 @@ test("rejects a uniformly wrong permanent-job identity", () => {
 test("enforces commit and grouped frame/rebuild gates", () => {
   const mutations = [
     ["row_model_commit_p95_ms", 8.01],
-    ["scroll_frame_p95_ms", 16.01],
+    ["scroll_frame_p95_ms", 17.01],
     ["long_tasks_count", 1],
     ["scroll_position_drift_px", 1],
     ["visible_row_count_drift", 1],
@@ -200,6 +202,7 @@ test("enforces commit and grouped frame/rebuild gates", () => {
         validateRowModelGateSummaries(summaries, {
           seed: 91_337,
           startedAt,
+          calibration: calibrationFixture(),
         }),
       new RegExp(String(metric)),
     );
@@ -227,7 +230,149 @@ test("requires a completed responsive rebuild and a checksum containing every ca
       validateRowModelGateSummaries(summaries, {
         seed: 91_337,
         startedAt,
+        calibration: calibrationFixture(),
       }),
     /responsive|checksum|patch/i,
   );
+});
+
+function calibrationFixture(interval = 1000 / 60, overrides = {}) {
+  return {
+    timestamp: "2026-08-11T18:00:10.000Z",
+    browserName: "chromium",
+    browserVersion: "140.0.0",
+    profile: "default",
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+    intervalsMs: Array.from(
+      { length: 120 },
+      (_, i) => interval + (i % 2 ? 0.05 : -0.05),
+    ),
+    ...overrides,
+  };
+}
+
+function validateWithCadence(calibration, interval = 16.7) {
+  const summaries = passingSummaries();
+  for (const summary of summaries)
+    summary.metrics.scroll_frame_p95_ms = interval;
+  return validateRowModelGateSummaries(summaries, {
+    seed: 91_337,
+    startedAt,
+    calibration,
+  });
+}
+
+test("uses independent 60/120 Hz calibration plus quantization allowance", () => {
+  for (const interval of [1000 / 60, 1000 / 120]) {
+    const calibration = calibrationFixture(interval);
+    const report = validateWithCadence(calibration, interval + 0.2);
+    assert.equal(report.frameCadence.budgetMs, interval + 0.25);
+    assert.deepEqual(report.frameCadence.calibration, calibration);
+    assert.throws(
+      () => validateWithCadence(calibration, interval * 2),
+      /scroll_frame_p95_ms/,
+    );
+  }
+});
+
+test("requires eligible independent calibration evidence", () => {
+  for (const calibration of [
+    undefined,
+    calibrationFixture(1000 / 30),
+    calibrationFixture(3),
+    calibrationFixture(16.7, { intervalsMs: Array(120) }),
+    calibrationFixture(16.7, { intervalsMs: Array(119).fill(16.7) }),
+    ...[NaN, Infinity, 0, -1].map((value) =>
+      calibrationFixture(16.7, {
+        intervalsMs: [value, ...Array(119).fill(16.7)],
+      }),
+    ),
+    calibrationFixture(16.7, {
+      intervalsMs: Array.from({ length: 120 }, (_, i) => (i % 2 ? 16 : 17)),
+    }),
+  ])
+    assert.throws(() => validateWithCadence(calibration, 12), /calibration/i);
+});
+
+test("rejects stale, future, and mismatched calibration provenance", () => {
+  for (const overrides of [
+    { timestamp: "2026-08-11T17:59:59.000Z" },
+    { timestamp: "2026-08-11T18:02:00.000Z" },
+    { timestamp: "invalid" },
+    { browserVersion: "different" },
+    { browserVersion: "" },
+    { browserName: "firefox" },
+    { profile: "cpu-throttled" },
+    { viewport: { width: 1280, height: 720 } },
+    { deviceScaleFactor: 2 },
+  ])
+    assert.throws(
+      () => validateWithCadence(calibrationFixture(16.7, overrides), 12),
+      /calibration/i,
+    );
+});
+
+test("rejects all nonfinite processing and frame metrics", () => {
+  for (const metric of [
+    "row_model_commit_p95_ms",
+    "rebuild_slice_max_ms",
+    "scroll_frame_p95_ms",
+  ]) {
+    for (const value of [NaN, Infinity, -Infinity]) {
+      const summaries = passingSummaries();
+      summaries[1].metrics[metric] = value;
+      assert.throws(
+        () =>
+          validateRowModelGateSummaries(summaries, {
+            seed: 91_337,
+            startedAt,
+            calibration: calibrationFixture(),
+          }),
+        new RegExp(metric),
+      );
+    }
+  }
+});
+
+test("isolated dropped calibration frames do not change the median budget", () => {
+  const calibration = calibrationFixture();
+  calibration.intervalsMs[0] = 1000 / 30;
+  assert.ok(validateWithCadence(calibration).frameCadence.budgetMs < 17);
+});
+
+test("preserves independent responsive rebuild and deterministic checksum checks", () => {
+  const mutations = [
+    (rowModel) => {
+      rowModel.finalChecksum = "incorrect";
+    },
+    (rowModel) => {
+      rowModel.acceptedPatchCount = 2999;
+    },
+    (rowModel) => {
+      rowModel.rebuild.responsive = false;
+    },
+    (rowModel) => {
+      rowModel.rebuild.streamCommitsObserved = 0;
+    },
+    (rowModel) => {
+      rowModel.rebuild.sourceRowCountAfter = 1;
+    },
+    (rowModel) => {
+      rowModel.rebuild.groupCountAfter = 1;
+    },
+  ];
+  for (const mutate of mutations) {
+    const summaries = passingSummaries();
+    mutate(summaries[1].rowModel);
+    assert.throws(
+      () =>
+        validateRowModelGateSummaries(summaries, {
+          seed: 91_337,
+          startedAt,
+          calibration: calibrationFixture(),
+        }),
+      /checksum|patch|responsive|row count|group count/i,
+    );
+  }
 });

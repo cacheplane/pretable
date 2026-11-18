@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { ROW_MODEL_GATE_CONTEXT } from "./scripts/frame-cadence.mjs";
+
 const baseURL = process.env.PRETABLE_BENCH_BASE_URL ?? "http://127.0.0.1:4173";
 const useExternalServer = process.env.PRETABLE_BENCH_EXTERNAL_SERVER === "1";
 
@@ -36,7 +38,10 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use:
+        process.env.PRETABLE_BENCH_ROW_MODEL_GATE === "1"
+          ? ROW_MODEL_GATE_CONTEXT
+          : { ...devices["Desktop Chrome"] },
     },
   ],
 });
