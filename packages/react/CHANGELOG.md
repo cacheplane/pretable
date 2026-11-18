@@ -1,5 +1,17 @@
 # @pretable/react
 
+## 0.21.0
+
+### Minor Changes
+
+- Add opt-in filtered and all-input summary rows with independent engine or keyed server authority. Core exposes cached raw summaries, reference-counted scope leases, and effective aggregate column metadata. React adds typed summary formatting, explicit completeness and stale/loading/error states, and read-only summary tables aligned with the grid. UI styles the summary region without adding totals to selection, clipboard, or CSV output. ([#622](https://github.com/cacheplane/pretable/pull/622))
+
+### Patch Changes
+
+- Updated dependencies [[`e77cba2`](https://github.com/cacheplane/pretable/commit/e77cba2808147f295d28179d4ab2309ce46c96ec)]:
+  - @pretable/core@0.21.0
+  - @pretable/ui@0.21.0
+
 ## 0.20.3
 
 ### Patch Changes
