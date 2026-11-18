@@ -158,6 +158,7 @@ export interface CompiledQuery<TColumns> {
   readonly derivations: PretableDerivationsFor<TColumns>;
   readonly query: PretableQueryFor<TColumns>;
   readonly activeColumnIds: readonly ColumnIdOf<TColumns>[];
+  readonly aggregateColumnIds: readonly ColumnIdOf<TColumns>[];
   evaluate<TRowId extends PretableRowId>(
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
   ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
@@ -1598,6 +1599,7 @@ class CompiledQueryPlan<TColumns>
   implements CompiledQuery<TColumns>, InternalCompiledQuery
 {
   readonly activeColumnIds: readonly ColumnIdOf<TColumns>[];
+  readonly aggregateColumnIds: readonly ColumnIdOf<TColumns>[];
   readonly #publicColumns: readonly RuntimeColumn[];
   readonly #publicQuery: RuntimeQuery;
   readonly #runtimeColumns: readonly RuntimeColumn[];
@@ -1709,6 +1711,9 @@ class CompiledQueryPlan<TColumns>
     this.#aggregateColumns = this.#runtimeColumns.filter(
       (column) => column.aggregate !== undefined,
     );
+    this.aggregateColumnIds = Object.freeze(
+      this.#aggregateColumns.map((column) => column.id),
+    ) as readonly ColumnIdOf<TColumns>[];
     this.#aggregateColumns.forEach((column) => activeIds.add(column.id));
     this.#active = this.#runtimeColumns.filter((column) =>
       activeIds.has(column.id),

@@ -126,3 +126,47 @@ export const windowedSurface = (
     viewportHeight={320}
   />
 );
+
+// docs-fence: server-data/totals.mdx#Summary answers
+import type {
+  PretableSummaries,
+  PretableServerSummaryResult,
+} from "@pretable/react";
+
+const requestKey = "dataset-7:auth-2:revision-42:filter-design:sum-v1";
+const aggregateDefinitionKey = "hours:number:sum:v1";
+
+const ready: PretableServerSummaryResult = {
+  state: "ready",
+  requestKey,
+  aggregateDefinitionKey,
+  completeness: "complete",
+  values: { hours: 120 },
+};
+const stale: PretableServerSummaryResult = {
+  state: "stale",
+  requestKey: "dataset-7:auth-2:revision-41:filter-all:sum-v1",
+  aggregateDefinitionKey,
+  completeness: "complete",
+  label: "Previous filter, before the latest update",
+  values: { hours: 360 },
+};
+const loading: PretableServerSummaryResult = { state: "loading" };
+const error: PretableServerSummaryResult = {
+  state: "error",
+  message: "Summary could not be loaded",
+};
+const unavailable: PretableServerSummaryResult = { state: "unavailable" };
+
+// Your request lifecycle chooses ready, stale, loading, error, or unavailable.
+const summaries: PretableSummaries = {
+  filtered: {
+    authority: "server",
+    requestKey,
+    aggregateDefinitionKey,
+    result: ready,
+  },
+  all: { authority: "engine", completeness: "partial" },
+};
+
+void [ready, stale, loading, error, unavailable, summaries];

@@ -233,3 +233,13 @@ reaches Pretable.
 - [Clipboard](/docs/grid/clipboard)
 - [CSV export](/docs/grid/export)
 - [API reference](/docs/grid/api-reference)
+
+## Summary rows
+
+Whole-input summaries reuse the cached native column formatters when
+`formatSummary` is absent. `formatSummary` overrides native formatting and
+receives summary scope, authority, completeness, and ready/stale state; it does
+not inherit `formatAggregate` or leaf `format`. Date extrema remain canonical
+strings, while counts are numeric and never inherit `dateFormat`. See
+[summary formatting](/docs/grid/grouping#summary-formatting) for shared group
+and summary callbacks and missing-key versus `null` behavior.

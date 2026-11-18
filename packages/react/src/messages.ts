@@ -22,6 +22,27 @@
 import type { PretableSurfaceMessages } from "./pretable-surface";
 
 export const defaultMessages: Required<PretableSurfaceMessages> = {
+  summaryCaption: ({ scope, loaded }) =>
+    scope === "filtered"
+      ? loaded
+        ? "Matching loaded rows"
+        : "Matching rows"
+      : loaded
+        ? "All loaded rows"
+        : "All input rows",
+  summaryServerLabel: () => "Server totals",
+  summaryLoadedLabel: () => "Loaded rows only",
+  summaryPartialLabel: () => "Partial result",
+  summaryStaleLabel: ({ label }) => `Stale: ${label}`,
+  summaryStateMessage: ({ state, message }) =>
+    state === "loading"
+      ? "Loading"
+      : state === "error"
+        ? message
+          ? `Error: ${message}`
+          : "Error"
+        : "Unavailable",
+  summaryMissingValue: () => "—",
   selectAllLabel: ({ scope }) =>
     scope === "loaded" ? "Select all loaded rows" : "Select all rows",
   selectAllAnnouncement: ({

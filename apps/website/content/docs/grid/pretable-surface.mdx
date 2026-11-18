@@ -98,7 +98,7 @@ For common semantic presentations, `PretableBadge`, `PretableDelta`, `PretableEn
 
 The rows-mode `query`/`onQueryChange` pair owns filters, sort, and grouping together. The `state` prop controls UI interaction and column-layout slices. In explicit-model mode, application code sends query and row mutations to `rowModel`; an `onGridReady` handle remains UI-only.
 
-See [Row grouping and aggregation](/docs/grid/grouping) for typed grouping, aggregate, expansion, and group-panel contracts.
+See [Row grouping and aggregation](/docs/grid/grouping) for typed grouping, aggregate, expansion, and group-panel contracts. The optional `summaries` prop enables independent filtered/all-input totals with engine or server authority; see [summary rows](/docs/grid/grouping#grand-totals-and-summary-rows).
 
 ## Server-applied filtering and sorting
 

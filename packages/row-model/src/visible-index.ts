@@ -1,3 +1,4 @@
+import type { PretableSummaryScope } from "./summary-types";
 import type { PretableRowId } from "./column-types";
 import {
   compareWithSortKeys,
@@ -179,6 +180,9 @@ export function createFlatSnapshot<
     const count = visibleCount(grouped, policy);
     const dataCount = visibleDataCount(grouped, policy);
     return Object.freeze({
+      getSummary: (scope: PretableSummaryScope) =>
+        root.summaries?.results[scope],
+      aggregateColumnIds: root.queryPlan.aggregateColumnIds,
       revision: root.revision,
       sourceRowCount: root.rows.size,
       visibleRowCount: count,
@@ -224,6 +228,8 @@ export function createFlatSnapshot<
   ): number | undefined =>
     ref.kind === "data" ? visible.rankOf(ref.rowId) : undefined;
   return Object.freeze({
+    getSummary: (scope: PretableSummaryScope) => root.summaries?.results[scope],
+    aggregateColumnIds: root.queryPlan.aggregateColumnIds,
     revision: root.revision,
     sourceRowCount: root.rows.size,
     visibleRowCount: visible.size,

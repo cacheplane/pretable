@@ -139,6 +139,7 @@ export interface LabeledGridSurfaceBaseProps<
   onCopy?: PretableSurfaceProps<TRow, TRowId>["onCopy"];
   copyToClipboard?: PretableSurfaceProps<TRow>["copyToClipboard"];
   messages?: PretableSurfaceProps<TRow>["messages"];
+  summaries?: PretableSurfaceProps<TRow>["summaries"];
   valueClassName?: string;
   viewportHeight: number;
 }
@@ -208,6 +209,7 @@ export function LabeledGridSurface<
   onCopy,
   copyToClipboard,
   messages,
+  summaries,
   valueClassName,
   viewportHeight,
 }: LabeledGridSurfaceProps<TRow, TRowId>): ReactElement {
@@ -305,6 +307,7 @@ export function LabeledGridSurface<
       onCopy={onCopy}
       copyToClipboard={copyToClipboard}
       messages={messages}
+      summaries={summaries}
       viewportHeight={viewportHeight}
     />
   );

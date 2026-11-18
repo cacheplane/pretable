@@ -67,6 +67,7 @@ export type ModelSchemaColumn<TRow extends object = object> = {
   readonly dateFormat?: unknown;
   readonly format?: unknown;
   readonly formatAggregate?: unknown;
+  readonly formatSummary?: unknown;
 };
 
 /**
@@ -313,6 +314,7 @@ export function mergeModelPresentationColumnsForTesting<
       dateFormat: schema.dateFormat,
       format: schema.format,
       formatAggregate: schema.formatAggregate,
+      formatSummary: schema.formatSummary,
     };
   });
 }

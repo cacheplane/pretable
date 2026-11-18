@@ -1,3 +1,4 @@
+import type { SummaryIndex } from "./summary-index";
 import type {
   CompiledQuery,
   CompiledRowMetadata,
@@ -90,6 +91,7 @@ export interface RevisionRoot<
   TRowId extends PretableRowId,
   TColumns,
 > {
+  readonly summaries?: SummaryIndex;
   readonly revision: number;
   readonly parentRevision: number | null;
   readonly rows: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>;

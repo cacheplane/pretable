@@ -1,3 +1,5 @@
+import { createSummaryBuild, retainSummaryScopes } from "./summary-index";
+import type { PretableSummaryScope } from "./summary-types";
 import {
   compileQuery,
   fillSortKeysFromPrevious,
@@ -386,6 +388,10 @@ interface ActiveTransition<
   readonly id: number;
   readonly operation: "set-query" | "set-derivations";
   readonly candidate: CooperativeTransitionCandidate<TRow, TRowId, TColumns>;
+  readonly summaryPlan: CompiledQuery<TColumns>;
+  summaryScopesKey: string;
+  summaryBuild:
+    ReturnType<typeof createSummaryBuild<TRow, TRowId, TColumns>> | undefined;
   readonly finished: Promise<number>;
   readonly resolve: (revision: number) => void;
   readonly reject: (error: unknown) => void;
@@ -724,6 +730,36 @@ export function createLocalRowModel<
   let nextSourceOrder = initialStore.records.length;
   let nextTransitionId = 1;
   let activeTransition: ActiveTransition<TRow, TRowId, TColumns> | undefined;
+  const summaryLeases = new Map<PretableSummaryScope, number>();
+  const requestedSummaryScopes = (): PretableSummaryScope[] =>
+    (["all", "filtered"] as const).filter(
+      (scope) => (summaryLeases.get(scope) ?? 0) > 0,
+    );
+  let summaryAcquisition:
+    | {
+        plan: CompiledQuery<TColumns>;
+        key: string;
+        rebase: RevisionRoot<TRow, TRowId, TColumns> | undefined;
+        build: ReturnType<typeof createSummaryBuild<TRow, TRowId, TColumns>>;
+        cancel?: () => void;
+      }
+    | undefined;
+  let cancelSummaryRetry: (() => void) | undefined;
+  const cancelSummaryAcquisition = () => {
+    try {
+      cancelSummaryRetry?.();
+    } catch {
+      /* advisory cleanup */
+    }
+    cancelSummaryRetry = undefined;
+    const pending = summaryAcquisition;
+    summaryAcquisition = undefined;
+    try {
+      pending?.cancel?.();
+    } catch {
+      /* advisory cleanup */
+    }
+  };
   const listeners = new Set<() => void>();
   const changeJournal = createChangeJournal<TRowId>(
     options.changeJournalCapacity,
@@ -807,6 +843,7 @@ export function createLocalRowModel<
     // barrier default.
     barrierReason: "bulk-replace" | "reorder" | "refilter" = "bulk-replace",
   ): void => {
+    cancelSummaryAcquisition();
     queryPlan = committedRoot.queryPlan;
     query = committedRoot.queryPlan.query;
     derivations = committedRoot.queryPlan.derivations;
@@ -845,6 +882,7 @@ export function createLocalRowModel<
     } catch {
       // Scheduler cancellation is best-effort; model ownership still releases.
     }
+    transition.summaryBuild = undefined;
     transition.candidate.release();
     transition.reject(
       new PretableTransitionCancelledError(transition.id, reason),
@@ -864,6 +902,7 @@ export function createLocalRowModel<
     } catch {
       // Preserve the transition failure rather than a scheduler cleanup error.
     }
+    transition.summaryBuild = undefined;
     transition.candidate.release();
     const typed =
       findPretableReentrantMutationError(error) ??
@@ -901,9 +940,23 @@ export function createLocalRowModel<
   ): boolean => {
     if (activeTransition !== transition || disposed) return false;
     try {
-      const complete = runCooperativeTransitionSlice(transitionRuntime, () =>
-        transition.candidate.step(),
-      );
+      const scopes = requestedSummaryScopes();
+      const key = scopes.join(",");
+      if (transition.summaryScopesKey !== key) {
+        transition.summaryScopesKey = key;
+        transition.summaryBuild = scopes.length
+          ? createSummaryBuild(
+              root,
+              transition.summaryPlan,
+              scopes,
+              instrumentation,
+            )
+          : undefined;
+      }
+      const complete = runCooperativeTransitionSlice(transitionRuntime, () => {
+        if (!transition.candidate.step()) return false;
+        return transition.summaryBuild?.step() ?? true;
+      });
       if (activeTransition !== transition || disposed) return false;
       if (!complete) {
         state = Object.freeze({
@@ -916,7 +969,10 @@ export function createLocalRowModel<
 
       const previousRevision = root.revision;
       const revision = previousRevision + 1;
-      const committedRoot = transition.candidate.finish(revision);
+      const committedRoot = Object.freeze({
+        ...transition.candidate.finish(revision),
+        summaries: transition.summaryBuild?.finish(),
+      });
       activeTransition = undefined;
       const cancelScheduled = transition.cancelScheduled;
       transition.cancelScheduled = undefined;
@@ -926,6 +982,7 @@ export function createLocalRowModel<
         // Successful publication cannot be rolled back by advisory cleanup.
       }
       publishCommittedRoot(committedRoot, previousRevision, revision);
+      transition.summaryBuild = undefined;
       transition.candidate.release();
       transition.resolve(revision);
       return true;
@@ -959,6 +1016,11 @@ export function createLocalRowModel<
         operation,
         instrumentation,
       }),
+      summaryPlan: nextPlan,
+      // Build lazily inside runTransitionSlice's error boundary, after the
+      // transition owns status and its promise. Custom init may throw.
+      summaryScopesKey: "",
+      summaryBuild: undefined,
       finished,
       resolve,
       reject,
@@ -973,6 +1035,18 @@ export function createLocalRowModel<
     target: RevisionRoot<TRow, TRowId, TColumns>,
     affectedRowIds: readonly TRowId[],
   ): void => {
+    if (summaryAcquisition) {
+      if (
+        summaryAcquisition.rebase !== undefined ||
+        summaryAcquisition.plan !== target.queryPlan
+      ) {
+        summaryAcquisition.plan = target.queryPlan;
+        // Row publication is past draft validation. Defer custom init to
+        // the acquisition slice instead of running consumer code here.
+        summaryAcquisition.rebase = target;
+      } else summaryAcquisition.build.append(target, affectedRowIds);
+    }
+    activeTransition?.summaryBuild?.append(target, affectedRowIds);
     activeTransition?.candidate.append(
       Object.freeze({
         target,
@@ -1062,9 +1136,171 @@ export function createLocalRowModel<
     }
   };
 
+  const reportSummaryFailure = (error: unknown): void => {
+    if (activeTransition === undefined)
+      state = Object.freeze({
+        snapshot,
+        status: Object.freeze({
+          kind: "error",
+          transitionId: nextTransitionId++,
+          error: transitionError(error, "set-derivations"),
+        }),
+      });
+  };
+
+  const restartSummaryAcquisition = (): void => {
+    const scopes = requestedSummaryScopes();
+    const key = scopes.join(",");
+    if (
+      summaryAcquisition?.key === key &&
+      summaryAcquisition.plan === root.queryPlan
+    )
+      return;
+    if (scopes.every((scope) => root.summaries?.results[scope] !== undefined)) {
+      cancelSummaryAcquisition();
+      return;
+    }
+    const previousAcquisition = summaryAcquisition;
+    const pending = {
+      plan: root.queryPlan,
+      key,
+      rebase: undefined as RevisionRoot<TRow, TRowId, TColumns> | undefined,
+      build: createSummaryBuild(root, root.queryPlan, scopes, instrumentation),
+      cancel: undefined as (() => void) | undefined,
+    };
+    summaryAcquisition = pending;
+    const advance = (): void => {
+      if (disposed || summaryAcquisition !== pending) return;
+      if (pending.rebase !== undefined) {
+        pending.build = createSummaryBuild(
+          pending.rebase,
+          pending.plan,
+          requestedSummaryScopes(),
+          instrumentation,
+        );
+        pending.rebase = undefined;
+      }
+      if (
+        runCooperativeTransitionSlice(transitionRuntime, () =>
+          pending.build.step(),
+        )
+      ) {
+        const previous = root;
+        const next = Object.freeze({
+          ...root,
+          revision: root.revision + 1,
+          parentRevision: root.revision,
+          summaries: retainSummaryScopes(
+            pending.build.finish(),
+            requestedSummaryScopes(),
+          ),
+        });
+        summaryAcquisition = undefined;
+        appendTransitionDelta(next, []);
+        commit(next);
+        changeJournal.appendChanges(
+          previous.revision,
+          next.revision,
+          Object.freeze([]),
+        );
+      } else
+        pending.cancel = transitionRuntime.scheduler.schedule(() => {
+          if (disposed || summaryAcquisition !== pending) return;
+          try {
+            guarded("set-derivations", advance);
+          } catch (error) {
+            cancelSummaryAcquisition();
+            reportSummaryFailure(error);
+          }
+          notify();
+        });
+    };
+    try {
+      advance();
+    } catch (error) {
+      try {
+        pending.cancel?.();
+      } catch {
+        /* advisory cleanup */
+      }
+      summaryAcquisition = previousAcquisition;
+      throw error;
+    }
+    try {
+      previousAcquisition?.cancel?.();
+    } catch {
+      /* advisory cleanup */
+    }
+  };
+
   const model = {
     getState: () => state,
     getColumns: () => columns,
+    acquireSummaryScopes(scopes: readonly PretableSummaryScope[]): () => void {
+      assertCommandAllowed("set-derivations");
+      const unique = [...new Set(scopes)];
+      if (unique.some((scope) => scope !== "all" && scope !== "filtered"))
+        throw new TypeError("Unknown summary scope.");
+      guarded("set-derivations", () => {
+        for (const scope of unique)
+          summaryLeases.set(scope, (summaryLeases.get(scope) ?? 0) + 1);
+        try {
+          restartSummaryAcquisition();
+        } catch (error) {
+          for (const scope of unique)
+            summaryLeases.set(scope, summaryLeases.get(scope)! - 1);
+          throw error;
+        }
+      });
+      notify();
+      let released = false;
+      return () => {
+        if (released || disposed) return;
+        guarded("set-derivations", () => {
+          released = true;
+          for (const scope of unique)
+            summaryLeases.set(scope, summaryLeases.get(scope)! - 1);
+          const retained = retainSummaryScopes(
+            root.summaries,
+            requestedSummaryScopes(),
+          );
+          commit(Object.freeze({ ...root, summaries: retained }));
+          const requested = requestedSummaryScopes();
+          if (summaryAcquisition) {
+            summaryAcquisition.build.retainScopes(requested);
+            summaryAcquisition.key = requested.join(",");
+            if (
+              requested.every(
+                (scope) => root.summaries?.results[scope] !== undefined,
+              )
+            )
+              cancelSummaryAcquisition();
+          } else if (
+            requested.some(
+              (scope) => root.summaries?.results[scope] === undefined,
+            )
+          ) {
+            // Cleanup never executes consumer aggregates. Retry remaining scopes on a later slice.
+            try {
+              cancelSummaryRetry?.();
+              cancelSummaryRetry = transitionRuntime.scheduler.schedule(() => {
+                cancelSummaryRetry = undefined;
+                if (disposed) return;
+                try {
+                  guarded("set-derivations", restartSummaryAcquisition);
+                } catch (error) {
+                  reportSummaryFailure(error);
+                }
+                notify();
+              });
+            } catch (error) {
+              reportSummaryFailure(error);
+            }
+          }
+        });
+        notify();
+      };
+    },
     subscribe(listener: () => void) {
       if (disposed) return () => undefined;
       listeners.add(listener);
@@ -1185,6 +1421,7 @@ export function createLocalRowModel<
               revision: previousRevision + 1,
               parentRevision: previousRevision,
               rows: drafted.rows,
+              summaries: drafted.summaries,
               sourceOrder: drafted.sourceOrder,
               recordsBySlot: drafted.recordsBySlot,
               // Commit-time capacity: nothing between the draft and this
@@ -1256,6 +1493,7 @@ export function createLocalRowModel<
             revision: result.revision,
             parentRevision: previousRoot.revision,
             rows: drafted.rows,
+            summaries: drafted.summaries,
             sourceOrder: drafted.sourceOrder,
             recordsBySlot: drafted.recordsBySlot,
             // Commit-time capacity (see the setRows commit above).
@@ -1340,7 +1578,8 @@ export function createLocalRowModel<
         // stay first and never consult the count.
         const residentRowCount = root.rows.size;
         const fastPath =
-          nextPlan.query.rowGroups.length > 0
+          nextPlan.query.rowGroups.length > 0 ||
+          requestedSummaryScopes().length > 0
             ? undefined
             : isSortOnlyChange(queryPlan, nextPlan)
               ? residentRowCount <= sortFastPathRowLimit
@@ -1602,6 +1841,8 @@ export function createLocalRowModel<
       }
       if (disposed) return;
       const current = guarded("dispose", () => {
+        cancelSummaryAcquisition();
+        summaryLeases.clear();
         cancelActiveTransition("disposed");
         distinctValues.dispose(
           new PretableDisposedModelError("distinct-values"),

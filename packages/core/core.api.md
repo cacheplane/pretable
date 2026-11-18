@@ -369,6 +369,8 @@ export interface PretableColumnDefinition<TRow extends object, TId extends strin
     // (undocumented)
     readonly formatAggregate?: (input: PretableAggregateFormatInput<PretableAggregateOutputOf<TAggregate, TType>, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
     // (undocumented)
+    readonly formatSummary?: (input: PretableSummaryFormatInput<PretableAggregateOutputOf<TAggregate, TType>, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
+    // (undocumented)
     readonly header?: string;
     // (undocumented)
     readonly id: TId;
@@ -417,6 +419,7 @@ export interface PretableColumnHelper<TRow extends object> {
             readonly row: TRow;
             readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
         }) => string;
+        readonly formatSummary?: (input: PretableSummaryFormatInput<PretableAggregateOutputOf<TAggregate, TType>, PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>>) => string;
         readonly formatAggregate?: (input: {
             readonly value: PretableAggregateOutputOf<TAggregate, TType>;
             readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
@@ -439,6 +442,7 @@ export type PretableColumnOptions<TRow extends object, TId extends string, TValu
         readonly row: TRow;
         readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
     }) => string;
+    readonly formatSummary?: (input: PretableSummaryFormatInput<PretableAggregateOutputOf<TAggregate, TType>, PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>>) => string;
     readonly formatAggregate?: (input: {
         readonly value: PretableAggregateOutputOf<TAggregate, TType>;
         readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
@@ -600,6 +604,13 @@ export interface PretableEditState {
 
 // @public
 export type PretableEditStatus = "checking" | "editing" | "validating" | "saving" | "error";
+
+// @public
+export interface PretableEngineSummary {
+    // (undocumented)
+    readonly scope: PretableSummaryScope;
+    readonly values: Readonly<Record<string, unknown>>;
+}
 
 // @public (undocumented)
 export type PretableExpansionDefault = {
@@ -1080,6 +1091,7 @@ export interface PretableRowModel<TRow extends object, TRowId extends PretableRo
         readonly rowId: TRowId;
         readonly columns: TColumns;
     };
+    acquireSummaryScopes?(scopes: readonly PretableSummaryScope[]): () => void;
     applyTransaction(transaction: PretableTransaction<TRow, TRowId>): PretableMutationResult<TRowId>;
     changesSince(revision: number): PretableChangeSequence<TRowId>;
     // (undocumented)
@@ -1144,11 +1156,13 @@ export type PretableRowModelOperation = "set-rows" | "apply-transaction" | "set-
 
 // @public (undocumented)
 export interface PretableRowModelSnapshot<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    readonly aggregateColumnIds?: readonly ColumnIdOf<TColumns>[];
     dataIndexOf(ref: PretableVisibleRowRef<TRowId>): number;
     dataRowAt(index: number): PretableDataRow<TRow, TRowId> | undefined;
     // (undocumented)
     readonly expansion: Readonly<PretableExpansionState>;
     firstDataRow(): PretableDataRow<TRow, TRowId> | undefined;
+    getSummary?(scope: PretableSummaryScope): PretableEngineSummary | undefined;
     indexOf(ref: PretableVisibleRowRef<TRowId>): number;
     // (undocumented)
     isGroupExpanded(groupId: PretableGroupId): boolean;
@@ -1256,6 +1270,31 @@ export type PretableSortFor<TColumns> = Prettify<(TColumns extends readonly (inf
     readonly direction: "asc" | "desc";
     readonly nulls?: "first" | "last";
 }>;
+
+// @public
+export interface PretableSummaryFormatContext {
+    // (undocumented)
+    readonly authority: "engine" | "server";
+    // (undocumented)
+    readonly completeness: "complete" | "partial";
+    // (undocumented)
+    readonly scope: "filtered" | "all";
+    // (undocumented)
+    readonly state: "ready" | "stale";
+}
+
+// @public (undocumented)
+export interface PretableSummaryFormatInput<TValue, TColumn> {
+    // (undocumented)
+    readonly column: TColumn;
+    // (undocumented)
+    readonly summary: PretableSummaryFormatContext;
+    // (undocumented)
+    readonly value: TValue;
+}
+
+// @public
+export type PretableSummaryScope = "filtered" | "all";
 
 // @public (undocumented)
 export interface PretableTransaction<TRow extends object, TRowId extends PretableRowId> {

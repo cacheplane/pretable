@@ -1,11 +1,10 @@
 # Pretable roadmap
 
-Last reviewed: 2026-08-10
+Last reviewed: 2026-11-13
 
-Pretable is a batteries-included React data grid built to be the fastest and
-best grid for demanding, financial-grade applications. The roadmap uses two
-reference workloads: live portfolio-management systems and collaborative
-financial planning.
+Pretable is a batteries-included, domain-neutral React data grid. Correctness,
+performance, and developer experience govern its roadmap. Financial-grade
+applications are a proving ground, not the product boundary.
 
 ## Governing principles
 
@@ -21,13 +20,21 @@ financial planning.
 
 ## Current baseline
 
-The aligned public-package baseline is `0.0.14`. The released grid already
-includes local sorting and typed filtering, selection, keyboard navigation,
-copy and validated bulk paste, typed asynchronous editing, column virtualization
-and layout, configurable row grouping and aggregation with an overflow-safe
-group panel, number-column alignment with tabular number/date figures,
-variable-height rows, and batched streaming transactions. Package changelogs
-and generated API reports are the source of truth for shipped behavior.
+The aligned public-package baseline is `0.20.3`. The shipped grid includes local
+sorting and typed filtering, selection, keyboard navigation, copy and validated
+bulk paste, typed asynchronous editing, column virtualization and layout,
+configurable row grouping and aggregation, variable-height rows, and batched
+streaming transactions. It also includes native number and canonical calendar-date
+formatting, a configurable tool panel, replaceable UI components, and external
+processing/window metadata for application-owned server data.
+
+Canonical calendar dates shipped in `0.14.0` via
+[#480](https://github.com/cacheplane/pretable/pull/480); the calendar-date design
+is not pending implementation. The S8 PMS benchmark profile is implemented;
+financial-planning workloads remain deferred. Package changelogs and generated
+API reports are the source of truth for shipped behavior. The external-data
+primitives do not yet constitute the complete remote/live row-model protocol
+listed below.
 
 See the current [core changelog](packages/core/CHANGELOG.md),
 [React changelog](packages/react/CHANGELOG.md),
@@ -35,36 +42,43 @@ See the current [core changelog](packages/core/CHANGELOG.md),
 [React API report](packages/react/react.api.md), and
 [committed comparative benchmark evidence](status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json).
 
-## Now — harden and measure
+## Now — grand totals and summary rows awaiting merge
 
-- Add deterministic PMS and financial-planning benchmark profiles without
-  weakening existing 60 Hz, zero-gap, and interaction-continuity gates.
+Grand totals and summary rows are implemented in this development branch and
+awaiting merge; they are not part of the shipped `0.20.3` baseline. The
+[approved design](docs/superpowers/specs/2026-11-13-grand-totals-and-summary-rows-design.md)
+covers independent filtered/all-input scopes, engine or keyed server authority,
+headless leases, cached aggregates, and read-only summary rendering.
 
-## Next — describe and manipulate financial views
+Preserve existing correctness, 60 Hz, zero-gap, and interaction-continuity gates
+while completing validation and release review. Package changelogs remain the
+source of truth for when the feature ships.
 
-1. Add a financial field schema, nested column bands, field chooser, formatting
-   descriptors, and view-management surface.
-2. Ship saved-view persistence: a versioned portable view document, migrations,
+## Next — saved views and local history
+
+1. Ship saved-view persistence: a versioned portable view document, migrations,
    schema reconciliation, browser-local storage, remote store adapter, and
    shared/personal view layers.
-3. Add a typed command foundation with atomic edit/paste batches, inverses, and
+2. Add a typed command foundation with atomic edit/paste batches, inverses, and
    bounded local undo/redo. Saved views precede command history.
+
+These priorities replace the older financial field-schema and application UI
+track. Applications continue to own domain schemas and policy.
 
 ## Later — remote scale, analytics, and collaboration
 
-1. Add a remote/live row model with bounded caching, typed query plans,
-   cancellation, partial/stale/error state, and ordered resynchronization.
+1. Extend the existing external-processing and window primitives into a
+   remote/live row model with bounded caching, typed query plans, cancellation,
+   partial/stale/error state, and ordered resynchronization.
 2. Add revisioned mutations with command IDs, base revisions, optimistic and
    pessimistic execution, conflicts, rollback, retries, and resync.
-3. Develop parallel application tracks:
-   - PMS analytics: incremental grouping/aggregation, totals, pivot,
-     drill-through, context actions, and export.
-   - Financial planning: range editing, fill, row creation/reordering, formula
-     and provenance surfaces, and time/scenario comparison columns.
+3. Develop domain-neutral analytical and manipulation features: pivot,
+   drill-through, context actions, export, range editing, fill, and row
+   creation/reordering. Applications own formulas and scenario semantics.
 4. Add provider-backed durable audit/version history, history UI,
    revert-as-new-command, redaction, retention hooks, and collaborative updates.
-5. Converge both tracks with shared/personal configuration, capability-aware UI,
-   tree data, localization, and accessibility hardening.
+5. Continue shared/personal configuration, capability-aware UI, tree data,
+   localization, and accessibility hardening.
 
 ## Not planned
 

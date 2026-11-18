@@ -61,6 +61,7 @@ import serverQueryOwnership from "../../../content/examples/server-query-ownersh
 import serverTotals from "../../../content/examples/server-totals/example";
 import serverWindowing from "../../../content/examples/server-windowing/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
+import summaryRows from "../../../content/examples/summary-rows/example";
 import themingCompositionOrder from "../../../content/examples/theming-composition-order/example";
 import tokenAwareToolbar from "../../../content/examples/token-aware-toolbar/example";
 import tokenOverrideLive from "../../../content/examples/token-override-live/example";
@@ -301,6 +302,10 @@ export const exampleRegistry = {
   },
   "streaming-chat-grid": {
     meta: streamingChatGrid,
+    hasDemo: true,
+  },
+  "summary-rows": {
+    meta: summaryRows,
     hasDemo: true,
   },
   "theming-composition-order": {

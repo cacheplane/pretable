@@ -1,3 +1,4 @@
+import type { PretableResolvedSummary } from "./summary";
 import type { PretableRow } from "@pretable/core";
 import { dateValueToUtcMs } from "@pretable-internal/calendar-date";
 
@@ -182,6 +183,44 @@ export function formatAggregateValue<TRow extends PretableRow>({
     return column.formatAggregate({ value, column, group, scope });
   }
 
+  return formatWithNative(
+    value,
+    valueFormatters.dates.get(column.id),
+    valueFormatters.numbers.get(column.id),
+    fallback,
+  );
+}
+
+export function formatSummaryValue<TRow extends PretableRow>({
+  summary,
+  column,
+  valueFormatters,
+  fallback,
+  unavailable = "—",
+}: {
+  summary: PretableResolvedSummary;
+  column: PretableColumn<TRow>;
+  valueFormatters: ValueFormatterRegistry;
+  fallback: (value: unknown) => string;
+  unavailable?: string;
+}): string {
+  if (
+    (summary.state !== "ready" && summary.state !== "stale") ||
+    !Object.hasOwn(summary.values, column.id)
+  )
+    return unavailable;
+  const value = summary.values[column.id];
+  if (column.formatSummary)
+    return column.formatSummary({
+      value,
+      column,
+      summary: {
+        scope: summary.scope,
+        authority: summary.authority,
+        completeness: summary.completeness,
+        state: summary.state,
+      },
+    });
   return formatWithNative(
     value,
     valueFormatters.dates.get(column.id),
