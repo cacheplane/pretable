@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createRemoteSessionController } from "../session";
+import {
+  createRemoteSessionController,
+  type RemoteInvocation,
+} from "../session";
 import { createDeferredProvider } from "./fixtures/provider";
 import {
   capabilities,
@@ -15,6 +18,7 @@ import type {
   PretableRemoteError,
   PretableRemoteQuery,
   PretableRemoteResult,
+  PretableRemoteSignal,
 } from "../types";
 
 const tick = async () => {
@@ -340,8 +344,13 @@ describe("remote session ownership", () => {
     const f = setup();
     const queued: (() => void)[] = [];
     const c = createRemoteSessionController(f.provider, {
-      invoke: (_operation, run) =>
-        new Promise((resolve) =>
+      invoke: <T>(
+        _operation: RemoteInvocation,
+        run: (
+          signal?: PretableRemoteSignal,
+        ) => Promise<PretableRemoteResult<T>>,
+      ) =>
+        new Promise<PretableRemoteResult<T>>((resolve) =>
           queued.push(() => {
             void run().then(resolve);
           }),
@@ -466,8 +475,13 @@ describe("remote session ownership", () => {
     let now = 0;
     const c = createRemoteSessionController(f.provider, {
       now: () => now,
-      invoke: (_operation, run) =>
-        new Promise((resolve) =>
+      invoke: <T>(
+        _operation: RemoteInvocation,
+        run: (
+          signal?: PretableRemoteSignal,
+        ) => Promise<PretableRemoteResult<T>>,
+      ) =>
+        new Promise<PretableRemoteResult<T>>((resolve) =>
           queued.push(() => {
             void run().then(resolve);
           }),
@@ -911,4 +925,34 @@ describe("remote session ownership", () => {
     expect(observed).toEqual(["invalid-response"]);
     expect(c.getSnapshot().error?.code).toBe("invalid-response");
   });
+});
+
+it("refused admission keeps payload and evidence unchanged and completes acceptance", async () => {
+  const transport = createDeferredProvider<Row, Columns>(capabilities);
+  let allow = false;
+  let consumed = 0;
+  const c = createRemoteSessionController(transport.provider, {
+    rootRangeSize: 2,
+    invoke: async (op, run) => {
+      void op.acceptanceDone?.then(() => consumed++);
+      return run();
+    },
+    prepareAdmission: () =>
+      allow ? { commit: () => true, evictions: [] } : undefined,
+  });
+  const start = c.setQuery(query);
+  transport.opens[0]!.resolve({
+    ok: true,
+    value: { ...session, queryKey: transport.opens[0]!.request.queryKey },
+  });
+  await tick();
+  const request = transport.reads[0]!.request;
+  transport.reads[0]!.resolve({ ok: true, value: { ...range(), ...request } });
+  await start;
+  expect(c.retention().nodes).toBe(0);
+  expect(c.getSnapshot().view).toBeUndefined();
+  await tick();
+  expect(consumed).toBe(2);
+  allow = true;
+  c.dispose();
 });

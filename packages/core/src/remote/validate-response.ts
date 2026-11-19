@@ -270,6 +270,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
     acceptRange(
       request: PretableRemoteRangeRequest,
       input: PretableRemoteRange<TRow>,
+      retain = true,
     ): PretableRemoteResult<PretableRemoteRange<TRow>> {
       return result(() => {
         check(!disposed);
@@ -345,13 +346,14 @@ export function createResponseValidator<TRow extends object, TColumns>(
           )
             fail("consistency");
         }
-        ranges.set(rangeAddress(r.route, r.start, r.end), r);
+        if (retain) ranges.set(rangeAddress(r.route, r.start, r.end), r);
         return r;
       });
     },
     acceptSummary(
       scope: "filtered" | "all",
       input: PretableRemoteSummary,
+      retain = true,
     ): PretableRemoteResult<PretableRemoteSummary> {
       return result(() => {
         check(!disposed);
@@ -378,9 +380,16 @@ export function createResponseValidator<TRow extends object, TColumns>(
             !equal(prior.values, s.values))
         )
           fail("consistency");
-        summaries.set(scope, s);
+        if (retain) summaries.set(scope, s);
         return s;
       });
+    },
+    /** Commit only a successful preflight, with no external callbacks between. */
+    commitRange(r: PretableRemoteRange<TRow>) {
+      ranges.set(rangeAddress(r.route, r.start, r.end), r);
+    },
+    commitSummary(s: PretableRemoteSummary) {
+      summaries.set(s.scope, s);
     },
     /** Release only together with the corresponding published payload eviction.
      * Forgotten overlaps remain the provider's sessionwide consistency duty. */

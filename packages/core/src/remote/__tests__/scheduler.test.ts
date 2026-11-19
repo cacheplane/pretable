@@ -826,3 +826,38 @@ describe("reentrant completion cleanup", () => {
     });
   });
 });
+
+it("waits for admission wake and holds ingress through consumer acceptance", async () => {
+  let available = false;
+  let leases = 0;
+  let accepted!: () => void;
+  const acceptanceDone = new Promise<void>((resolve) => {
+    accepted = resolve;
+  });
+  const scheduler = createRemoteScheduler({
+    acquire: () => {
+      if (!available) return undefined;
+      available = false;
+      leases++;
+      return () => {
+        leases--;
+        available = true;
+      };
+    },
+  });
+  const run = vi.fn(async () => ok);
+  const pending = scheduler.schedule({ ...demand("a"), acceptanceDone }, run);
+  expect(run).not.toHaveBeenCalled();
+  available = true;
+  scheduler.wake();
+  await pending;
+  expect(leases).toBe(1);
+  const second = scheduler.schedule(demand("b"), run);
+  expect(run).toHaveBeenCalledTimes(1);
+  accepted();
+  await tick();
+  await second;
+  expect(run).toHaveBeenCalledTimes(2);
+  expect(leases).toBe(0);
+  scheduler.dispose();
+});

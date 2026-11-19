@@ -13,6 +13,8 @@ export interface RemoteSchedulerClock {
   clearTimeout(handle: unknown): void;
 }
 interface Options {
+  /** Undefined blocks dispatch until wake; release runs after physical settlement and acceptance. */
+  readonly acquire?: () => (() => void) | undefined;
   readonly maxActive?: number;
   readonly maxQueued?: number;
   readonly maxSubscribers?: number;
@@ -74,6 +76,7 @@ export function createRemoteScheduler(options: Options = {}) {
     run: (signal: PretableRemoteSignal) => Promise<Result>;
     finalizeDiscarded?: (value: unknown) => void;
     attempts: number;
+    releaseIngress?: () => void;
     active: boolean;
     closed: boolean;
     ready: boolean;
@@ -187,6 +190,23 @@ export function createRemoteScheduler(options: Options = {}) {
       j.finalizeDiscarded = undefined;
       if (j.closed || disposed) safe(() => finalize?.(result.value));
     }
+    const releaseIngress = j.releaseIngress;
+    j.releaseIngress = undefined;
+    if (releaseIngress) {
+      const finish = () => {
+        safe(releaseIngress);
+        pump();
+      };
+      const acceptance =
+        result.ok && !j.closed && !disposed
+          ? subscribers
+              .filter((s) => !s.done)
+              .map((s) => s.demand.acceptanceDone)
+              .filter(Boolean)
+          : [];
+      if (acceptance.length) void Promise.all(acceptance).then(finish, finish);
+      else finish();
+    }
     j.active = false;
     if (j.closed || disposed) {
       j.finalizeDiscarded = undefined;
@@ -235,6 +255,21 @@ export function createRemoteScheduler(options: Options = {}) {
           dedupe.get(j.id) !== j
         )
           continue;
+        if (options.acquire) {
+          let release: (() => void) | undefined;
+          try {
+            release = options.acquire();
+          } catch {
+            close(j, cancelled);
+            continue;
+          }
+          if (!release) break;
+          if (disposed || j.closed || dedupe.get(j.id) !== j) {
+            safe(release);
+            continue;
+          }
+          j.releaseIngress = release;
+        }
         j.active = true;
         j.attempts++;
         let result: Promise<Result>;
@@ -351,6 +386,7 @@ export function createRemoteScheduler(options: Options = {}) {
   }
   return {
     schedule,
+    wake: pump,
     /** Replace only a named viewport's demand. No inferred row geometry. */
     replaceDemand(
       scope: string,

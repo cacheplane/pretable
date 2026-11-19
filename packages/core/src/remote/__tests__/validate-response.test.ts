@@ -324,3 +324,23 @@ describe("response validation", () => {
     }
   });
 });
+
+it("preflights replacements without retaining refused evidence", () => {
+  const v = createResponseValidator<Row, Columns>(query, session);
+  expect(v.acceptRange(range(), range()).ok).toBe(true);
+  expect(v.acceptRange(range(2, 4), range(2, 4), false).ok).toBe(true);
+  expect(v.retention().nodes).toBe(2);
+  expect(
+    v.acceptRange(
+      range(),
+      range(0, 2, {
+        entries: [
+          { kind: "leaf", id: 0, row: { value: 999 } },
+          range().entries[1]!,
+        ],
+      }),
+      false,
+    ),
+  ).toEqual({ ok: false, error: { code: "consistency" } });
+  expect(v.retention().nodes).toBe(2);
+});
