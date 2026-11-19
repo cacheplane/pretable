@@ -58,6 +58,11 @@ Design the missing remote-data orchestration around the existing external-data
 primitives. **Server-side grouping is required in the first release** (product
 direction confirmed 2026-11-19), including branch loading, stable group identity,
 server aggregates, expansion, bounded caching, and explicit partial/error state.
+The first release is read-only grouped browsing with range access and exact
+immediate-child counts, confirmed on 2026-11-19. Browsing uses one consistent
+result version with explicit Refresh. Selection survives scrolling and collapse
+within that result, clears on Refresh or query change, and selects only loaded
+leaves in the expanded view through the header checkbox.
 Flat-only delivery does not satisfy this requirement.
 
 The first design must distinguish query identity from result consistency,

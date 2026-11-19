@@ -7,18 +7,31 @@ Implementation plan: none; focused design decisions must be reviewed first
 Evidence: [research report](../../research/2026-11-19-remote-datasets-research.md)
 Product priority: [roadmap](../../../ROADMAP.md)
 
-## Confirmed direction and open scope
+## Confirmed scope and decision register
 
 The user requires **server-side grouping in the first release**. A flat remote
 cache alone is not an acceptable first release. Existing local and manual
 server-data modes remain supported. Live subscriptions, revisioned mutations,
 and durable history are separate designs, not implied by remote reads.
 
-Recommended first release: grouped, read-only remote browsing with server
-sorting/filtering/aggregation, range access, exact sibling counts, bounded
-residency, explicit loading/retry, and coherent refresh. Whether loaded remote
-leaves must support editing is a pending product question; the write boundary
-below makes the consequences explicit. No new public type names are frozen.
+The user confirmed **read-only grouped browsing** and **range access with exact
+child counts** on 2026-11-19. Remote editing, paste/cut/fill, write callbacks, and
+revisioned mutations are excluded from this release. Selection, copy, CSV,
+query changes, expansion, and refresh remain read operations.
+
+| Decision                                | Status                 | Outcome                                                                   |
+| --------------------------------------- | ---------------------- | ------------------------------------------------------------------------- |
+| Server grouping in release one          | User confirmed         | Flat-only delivery is insufficient                                        |
+| Read-only remote mode                   | User confirmed         | No remote editing or mutation callbacks                                   |
+| Range addressing and exact child counts | User confirmed         | Cursor-only/unknown-count navigation deferred                             |
+| Consistency and refresh                 | User confirmed         | Stable result version; explicit Refresh after expiry                      |
+| Selection                               | User confirmed         | Result-scoped IDs; loaded-view select-all; clear on Refresh/query change  |
+| Partial copy/export                     | Design recommendation  | No hidden fetching; complete copy or explicit partial CSV                 |
+| API integration and accessibility       | Design recommendations | Separate remote input/read handle; explicit loading slots                 |
+| Memory policy                           | Design recommendation  | Global admission limits and bounded metadata; numbers require measurement |
+
+Exact public names and tuned defaults are implementation-review matters, not
+permission to weaken these behavioral contracts.
 
 ## User outcome
 
@@ -84,12 +97,28 @@ flowchart LR
 5. **React presentation:** reuses columns, formatting, group controls, skins,
    summaries, and accessibility conventions while adding branch loading/errors.
 
-The public boundary should be an explicit remote model/read capability, not a
-provider forced to implement every method of the mutable local row model.
-Whether shared read interfaces are extracted or adapted internally is a focused
-API-review decision. No silent breaking change to `range`, `sourceRowCount`, or
-`PretableVisibleRow` is permitted. New slots must not reach existing user data-row
-renderers as if they contained a `TRow`.
+### API compatibility recommendation
+
+Add a distinct remote input mode to the existing React surface (conceptually
+`remoteModel`), mutually exclusive with `rows` and the existing local `model`.
+Keep the current public local model and its snapshot union unchanged. Adapt
+local and remote models to an internal shared layout/navigation read contract;
+introduce an explicit remote read-slot type rather than adding placeholders to
+`PretableVisibleRow` or pretending they contain a `TRow`.
+
+The remote handle exposes query, expansion, selection, refresh, retry, loaded
+serialization and diagnostics. It does not expose local mutation/edit commands.
+Remote props reject top-level mutation/edit/paste callbacks at type level; runtime callers
+bypassing types receive a configuration error before rendering. No successful
+no-op mutation methods. The model owns lifecycle and cache; React subscribes to
+immutable views and declares viewport demand outside render. Disposal is explicit
+for headless ownership and managed by the React owner when it creates a model.
+
+Prefer one new public remote model entry point through `@pretable/core` and React
+bindings through `@pretable/react`, with implementation modules isolated from the
+local model. Final symbol names and packaging must pass API-report and packed
+consumer review. Additive input overloads must preserve inference for existing
+rows/model consumers and compile-time exclusion of incompatible options.
 
 ## Query and provider semantics
 
@@ -116,7 +145,12 @@ silently interpreted as exhaustion. Reject duplicate/conflicting node IDs,
 wrong routes/levels, counts smaller than the returned extent, and mixed tokens.
 Across responses for the same token, route, scope, and aggregate definition,
 repeated resolved counts/aggregate answers and overlapping entries must agree. A contradiction is a session-consistency error,
-not a last-response-wins merge.
+not a last-response-wins merge. Opening the session supplies the exact root
+sibling count. Every group node supplies its exact immediate-child count before
+it can be expanded; fetching children must confirm that count for the same token.
+This prevents an expanded-but-uncountable branch in the first supported mode.
+Count computation can be expensive; the provider may cache it by result token,
+but must not substitute an estimate or a descendant leaf count.
 
 Use canonical typed route segments containing grouping column identity and key
 identity. Distinguish `null`, empty text, number `1`, text `"1"`, and separator
@@ -154,7 +188,7 @@ may finish out of order; one global last-request counter must not discard valid
 parallel branch reads. Aborting obsolete work is an optimization, not proof that
 its result cannot arrive. Tests must include providers that ignore abort.
 
-Recommended initial consistency guarantee: a provider either serves the accepted
+The provider consistency recommendation supporting the confirmed refresh UX is: a provider either serves the accepted
 result token consistently or rejects it as invalid/expired. It may implement
 this through immutable/materialized results, versioned reads, or an atomically
 checked revision fence that rejects changed data. A revision fence is not a
@@ -174,7 +208,11 @@ as a clearly labelled stale view while the new root is pending, within the same
 memory budget. Do not merge its children or aggregates into the new session.
 Commit the new root atomically, then revalidate retained expansion intent by
 identity and load only visible descendants. On expiry, retain the old read-only
-view as stale and offer/retry bounded refresh; never report an empty dataset.
+view as stale, cancel remaining reads and present an explicit Refresh action.
+Do not open a replacement session automatically. Unloaded slots explain that
+Refresh is needed; they never remain on a perpetual loading spinner. Cached
+rows stay readable and totals stay visibly stale, never reported as an empty
+dataset. Transient reads may retry only while the accepted session remains valid.
 On authorization-scope change, clear old data immediately rather than keeping
 sensitive rows as a stale view. Server authorization remains authoritative. An authoritative session/auth
 revocation response also clears protected cached/stale results, summaries, and
@@ -191,10 +229,11 @@ Never overload one count for all of these:
 - Display extent: group rows plus the currently expanded hierarchy.
 - Resident and rendered counts: memory and viewport observations.
 
-The recommended first slice requires exact immediate-child counts and range
-addressability for each opened branch. An unknown count is not zero. Unknown-
-count/cursor-only branches need a separate continuation/navigation mode and are
-deferred rather than simulated with an invented full scrollbar.
+The confirmed first slice requires exact immediate-child counts and range
+addressability, including root count at session open and child count on each
+group descriptor. Unknown-count/cursor-only backends receive an explicit
+unsupported-capability result before the model starts. Existing manual-data mode
+remains available. No client cursor walking masquerades as random access.
 
 Group aggregate answers include definition identity, result token, scope, and
 explicit availability/completeness. Do not average per-page averages or fold
@@ -220,11 +259,19 @@ to branch-relative ranges. Expansion affects the projection, not branch order.
 Default to collapsed groups; do not recursively fetch everything for expand-all.
 Expansion of unseen groups is a bounded intent to resolve when discovered.
 
-An expanded known group contributes its exact child count, plus the extra extents
-of known expanded descendants. Until an opened branch's count is known, it has
-an explicit local loading state rather than a fabricated dataset extent. Root
-leaf count alone never establishes global display ranks. Restored expansion
-paths are resolved incrementally; never infer unknown descendant topology.
+After session open, the display extent is the root sibling count plus the
+immediate-child count of every admitted expanded group reachable through expanded ancestors. Each expanded group has
+known identity, sibling ordinal, ancestor path and exact child count retained in
+topology metadata. Those facts make the current projection exact even when most
+payload slots are unloaded. Collapsed descendants contribute no extra extent.
+This does not claim the count of all nodes in an infinitely expanded tree.
+
+Before session open, display a body-level loading/error state, not indexed rows
+with guessed counts. Restored expansion paths are applied only after their
+ancestor descriptors/positions are known. Do not scan every branch to restore an
+offscreen path; without an optional locate capability, restoration waits until
+that path is encountered through ordinary demand. Root leaf count never replaces
+the display extent. Expansion metadata admission is atomic with projection changes.
 
 Render slots distinguish materialized group/leaf, unloaded, loading, and failed
 range. All have stable presentation keys; only real records have record IDs.
@@ -270,75 +317,220 @@ Provisional engineering targets, to validate before freezing public defaults:
 | Measurements and selection metadata | Separate configurable finite caps, with diagnostics; never hidden behind a page-count limit           |
 | Sessions                            | At most current plus one retiring stale session, sharing the global budget                            |
 
-Accounted bytes are an estimate with an adapter sizing hook, not a claim about
-exact JavaScript heap usage. Heap evidence must accompany row/metadata counters.
-In-flight payloads and old immutable roots need separate bounded accounting;
-consumers retaining snapshots are outside the controller's ownership and must
-have documented costs.
+### Admission, metadata, and snapshot ownership
 
-Protect the visible working set and required ancestor/focus metadata. Reduce
-prefetch/overscan first; evict cold collapsed/offscreen payload next. If a budget
-cannot admit the visible page or one oversized record, surface a capacity error
-with recovery/configuration guidance; do not oscillate fetch/evict indefinitely.
-Do not silently discard selections or collapse user-visible branches to satisfy
-a hidden limit. Expansion beyond a metadata cap is refused with an explanation.
+Accounted bytes are an estimate with an adapter sizing hook, not exact JavaScript
+heap usage. Reserve response capacity before dispatch: initial target 8 MiB per
+response and at most four active reads (32 MiB reserved ingress), separately from
+the 32 MiB admitted payload cache. Provider transports must enforce their response
+limits; rejecting an oversized already-decoded object cannot undo its transient
+allocation. Report accounted ingress, cache, metadata and sampled heap separately.
+No claim of a strict process-heap cap follows from these estimates.
 
-Retry transient reads with bounded backoff and attempt/time limits; user retry
-is available per failed range. Unsupported queries, permission failures, malformed
-responses, and token expiry are not generic transient retries. Unrelated branches
-stay usable for range-local failures; session consistency violations, token
-expiry, and authorization revocation use their wider recovery policy. Refresh of a single branch may reuse the session only if the provider
-can still serve that exact token; a new token replaces the coherent session,
-including ancestor counts/aggregates. Disposal aborts, releases resources, drops
-listeners, and prevents all late publication, including under React StrictMode.
+Initial metadata targets: at most 8,192 retained topology nodes, grouping depth
+32, 2,048 expansion overrides, 10,000 explicitly selected IDs, 100,000 retained
+height measurements and 8 MiB accounted metadata globally. Apply both cardinality
+and accounted-size limits, including variable-length IDs and keys. These are
+proposed configurable defaults awaiting benchmark validation, not hidden limits.
+The 256 store objects are evictable scheduling/cache containers; topology for an
+expanded branch survives their eviction and consumes its separate allowance.
+
+Reserve capacity atomically before admitting a response or expansion. Protect the
+visible working set and required ancestor/focus topology. Drop queued prefetch,
+reduce overscan, and evict cold payload before refusing visible work. Refuse a new
+expansion or additive selection that cannot fit; preserve the prior operation's
+state and announce the limit. Never silently deselect records or collapse an
+already visible branch. Height measurements can use bounded LRU eviction because
+re-estimation plus anchor correction is defined; loss of a selection cannot.
+
+If the minimum visible set exceeds configuration, show a capacity diagnostic
+with Retry/Refresh and configuration guidance. Do not refetch the same rejected
+page repeatedly. A changed viewport or capacity setting can retry admission;
+ordinary scroll telemetry cannot create an infinite error/fetch loop. Retained
+stale data and new-session admission share the cache budget. Evict offscreen stale
+payload first; if retaining the old viewport prevents the new root from fitting,
+release that stale body and show loading while preserving safe presentation intent.
+
+Controller ownership retains only current published state and at most one retiring
+view during a handover; no internal snapshot-history list. Persistent structures
+can share data, but all controller-owned references count toward budgets until
+released. External consumers that retain immutable snapshots own that extra memory;
+document it and provide counters for controller retention. Tests include repeated
+subscribe/unsubscribe, StrictMode and abandoned in-flight requests.
+
+### Errors, retries, and request permits
+
+| Failure                                            | Result behavior                                                                        | Recovery                                                                              |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Transient range read                               | Keep compatible resident data; mark only missing range failed                          | Initial attempt plus at most two automatic retries; then explicit Retry               |
+| Unsupported query/capability or malformed response | Do not publish the answer                                                              | Explain the incompatible configuration; no automatic retry                            |
+| Contradiction within one result token              | Invalidate that session, cancel its work, and remove its untrustworthy body/aggregates | Require a fresh session; never retain a contradicted result as trustworthy stale data |
+| Expired/invalidated token                          | Freeze the coherent old result as stale; stop further reads against it                 | Explicit user Refresh; no automatic session restart                                   |
+| Range-local authorization denial                   | Remove protected cached payload and selection in the denied range/branch               | Keep unrelated authorized branches; explicit retry after permission recovery          |
+| Session authorization revocation                   | Clear protected cache, summaries, focus/selection and retiring results                 | Application establishes a new authorized scope/session                                |
+
+Provisional transient retry timing is 250 ms then 1 s with bounded jitter; honor
+provider retry-after only within an overall 30 s request/retry deadline. Tests use
+a seeded clock. Deadlines produce a timeout state and cancellation; they never
+turn an unknown network outcome into accepted data. Permission and consistency
+errors are not transient failures.
+
+The concurrency permit covers invoked, unsettled provider reads, including reads
+whose abort was requested. Do not release it merely because the UI stopped caring:
+a provider ignoring abort could otherwise accumulate unbounded requests while the
+user scrolls. Providers must settle cancellation/deadlines; a nonconforming stalled
+provider consumes its permit and reports a diagnostic instead of spawning an
+unbounded replacement loop. The grid cannot prove backend computation stopped;
+transport/server resource limits remain the provider's responsibility.
+
+Refresh of a single branch may reuse a session only when the provider can still
+serve that exact token; it refills missing/failed data, not newer values. New
+values require a new coherent result token, including ancestor counts/aggregates.
+Disposal aborts, releases provider sessions best-effort, drops listeners, clears
+controller-owned data, and prevents late publication under StrictMode. Late
+settlement still releases request accounting without reviving a disposed model.
 
 ## Selection, copy, export, and editing boundaries
 
-First proposal: explicit selected leaf IDs and loaded group focus, with selection
-stored separately from evictable payloads. Header select-all is explicitly
-**loaded records**, not every matching server record. Subtree/query-wide selection
-rules and bulk mutations are deferred. Group checkboxes must not imply complete
-selection of unloaded descendants.
+### Confirmed selection boundary
 
-Cell ranges require a stable projection and coverage. Retain endpoints/IDs, but
-mark ranges unresolved when required data or rank evidence is absent. Expand,
-collapse, refresh, and same-size membership changes must not reinterpret an old
-flat span as a new selection. An unsupported remote range operation returns a
-visible reason; it does not silently narrow its target.
+Explicit leaf-ID selection is scoped to one accepted result session: query
+identity, backend result token, and controller acceptance generation together. It survives
+payload eviction and collapse within that version; cache absence is not deletion.
+Show selected-ID count separately from selected rows currently materialized.
+Do not expose selected record objects for unloaded IDs. No query-wide rules,
+subtree checkboxes, or remote bulk-operation protocol in this release.
 
-Copy/CSV operate on explicitly materialized coverage and report omissions. Do not
-reuse `range(0, logicalTotal)` to enumerate an enormous sparse result. Add a bounded
-loaded iterator/read operation for serialization. A provider-backed full export
-can be a future application integration. Keep summaries excluded by default as
-in `0.21.0`.
+The header checkbox means **Select loaded rows in this view**: materialized leaf
+rows in the currently expanded projection, including loaded rows outside the DOM
+viewport, excluding collapsed cached descendants and stale sessions. Checking
+adds those IDs; unchecking removes only those IDs. A separate Clear selection
+action clears the entire retained set. Newly loaded rows are not automatically
+selected. Disable the header checkbox when no eligible leaf rows are loaded.
+A group row is focusable/expandable but does not select its unloaded subtree.
 
-Write scope is pending. Recommended initial remote model is read-only; existing
-local/manual paths retain editing. If editing loaded leaves is required, add a
-focused subdesign before implementation covering pinned drafts and active saves,
-capacity pressure, app-owned callbacks, late acknowledgements, row version
-conflicts, filter/group/sort membership changes, and ancestor invalidation. A
-successful callback cannot simply patch one cell and leave its old group totals
-and rank presented as current. General revisioned mutations remain separate.
+The user confirmed clearing ID selection and cell ranges when Refresh or a
+query change begins, with one announcement. Do this even when the replacement
+query returns the same backend token: a revision fence can legitimately identify
+the same database version under two different filters. A failed refresh does not
+restore old selections. No new selection is created in a retiring stale view
+while a replacement is pending. Expiry alone retains current selection metadata
+until Refresh; unresolved records remain unavailable. Column presentation and
+compatible expansion intent survive. Source/auth changes clear all data-bound
+intent immediately, including expansion when its namespace is no longer valid.
+
+Cell ranges bind to `{acceptedSessionId, projectionRevision}` plus real
+endpoints/columns. The session ID covers query, result token, and generation.
+Keep at most 32 ranges (provisional configurable cap). Expansion/collapse changes
+the projection and clears ranges with an announcement; row-ID selection survives.
+Eviction alone preserves range intent within that projection but may make its
+contents unavailable. Shift/drag selection cannot silently jump across unloaded
+slots: report that the requested range is unavailable and retain the previous
+selection. Keyboard navigation may load its target; selection does not trigger
+unbounded fetches to materialize a range.
+
+### Copy and export recommendation
+
+Copy succeeds only when the selected cell rectangle(s), or the focused-cell
+fallback, are fully materialized in the current projection. Otherwise leave the
+clipboard untouched and announce that selected data is not loaded. Do not insert
+blank values for missing rows or silently narrow the copied range. Successful
+copy preserves existing formatting behavior. There is no automatic copy-triggered
+full-result fetch.
+
+Remote CSV exposes explicit loaded-view versus selected-loaded scope rather than
+inheriting an ambiguous empty-selection fallback. Selected-loaded with zero IDs
+produces no file and a visible explanation. With retained unloaded selected IDs,
+export only loaded selected records and report that omission; the user invokes
+an action explicitly labelled Export loaded selected rows. Loaded-view exports
+materialized nodes in expanded display order using a bounded loaded iterator,
+never `range(0, logicalTotal)` across an enormous sparse result.
+
+Preserve CSV formula protection, formatting, omission metadata and partial-file
+naming. Report unloaded records and collapsed groups where applicable; group
+aggregate values can be complete even while the leaf export is partial. Determine
+whole-result completeness from proven leaf coverage and expansion, never root
+sibling count or resident count alone. Summaries remain excluded by default.
+Existing local/manual CSV API behavior stays unchanged. Full-result server export
+is deferred and does not hide inside this synchronous loaded export path.
+
+Read-only scope is confirmed. Remote cells expose read-only semantics even if a
+shared column definition contains an editor configuration. Such column settings
+are accepted for reuse but inert: remote mode never invokes `editable` predicates,
+editor renderers, value parsers, validators, or setters. The remote mode rejects
+top-level mutation/edit/paste callbacks and provides no write handle; editing gestures do not mount an
+editor, and paste/cut/fill cannot dispatch writes. Copy remains available. Local
+and manual-data paths keep their existing editing behavior. Future remote writes
+need a separate contract for drafts, acknowledgements, membership/order changes,
+conflicts and ancestor invalidation.
 
 ## Accessibility and visible failure states
 
-Use the shared treegrid keyboard model and explicit expand/collapse semantics.
-Keep focus on the viewport while a generation-scoped navigation target loads;
-restore only if the target still belongs to the accepted result. Retry controls
-are keyboard reachable and do not steal focus on completion.
+Use a cell-focused, read-only treegrid. Header controls and real group/leaf cells
+retain existing keyboard behavior. Loaded group rows expose expansion and level;
+leaf rows never expose an expansion action. Root rows use level 1, deeper siblings
+use route depth + 1. Position and set size describe immediate siblings, not leaves.
 
-Derive ARIA positions from the same expanded projection used by layout, including
-header rows. Use exact counts only when that projection is established; otherwise
-use the appropriate unknown count and local hierarchy metadata without invented
-global positions. Group leaf totals never become `aria-rowcount`. Define how
-loading/error slots are exposed in the accessibility tree before implementation;
-they cannot masquerade as genuine business records. Announce branch loading,
-completion and failures without flooding the live region on every scroll event.
+### Loading and failed slots
 
-Preserve the existing global `dataState` vocabulary; add branch/range status
-instead of one global error replacing the entire tree. A failed root with no
-prior result shows a full error; a failed branch has local retry; a refreshing
-accepted session remains readable and clearly identified as such.
+After root metadata is accepted, each rendered unloaded slot occupies its true
+expanded-view row index. Render one row with a spanning read-only status cell
+labelled Loading or Could not load; it has no record ID, checkbox, editor or
+`aria-selected`. Loading slots have no fabricated group label or expanded state.
+Keep each slot's row index so virtualization does not collapse the advertised
+extent. Failure presentation is associated with its range and deduplicated:
+place a Retry control in the first rendered failed slot for that range, not one
+button per missing record. It is keyboard reachable and does not become a data
+selection target. These are status representations of unavailable rows, never
+synthetic business records passed to user renderers.
+
+The visual spacer for unrendered intervals is presentation-only. Render only the
+viewport's status slots, not one DOM row per missing sibling. One polite live
+region announces the pending navigation target or focused branch's transition;
+it does not announce every background request or spinner. Decorative skeletons
+inside status cells are hidden from assistive technology.
+
+### Pending keyboard navigation
+
+On navigation into an unloaded slot, keep DOM focus on the grid viewport and
+record `{generation, token, projectionRevision, route, siblingOrdinal, column}`.
+Prioritize that range and announce loading once. A later navigation replaces this
+target; Escape cancels it, and Tab may leave the grid. A completion never steals
+focus after the reader leaves. Restore focus to the real cell only if the target
+and projection remain valid. Collapse or query replacement cancels the target;
+a loaded parent group is the fallback for collapsing descendants. On failure,
+announce retry availability and let the reader navigate to Retry without an
+automatic focus transfer. Root loading/error retains usable header controls.
+
+### Counts and unknown states
+
+For an accepted root and admitted expansion topology, `aria-rowcount` is the
+exact expanded display extent plus the header, and `aria-rowindex` follows that
+same projection. All rendered real/status rows use consistent one-based indices.
+The known 20-region/10,000-customer/50,000-order example has display extent 60,020
+when those two groups are expanded, even if only 100 payload records are resident.
+It does not have one million visible rows merely because a leaf total says so.
+
+Before root metadata exists, use a body-level loading/error state and an unknown
+row count; do not invent indexed placeholder rows. Restored offscreen expansion
+is pending intent, not expanded topology until ancestors are resolved. Thus exact
+indices never depend on unknown subtrees. Group leaf totals are separate text.
+
+This is the proposed implementation contract, based on the WAI-ARIA sources in
+the research report, not a claim of tested screen-reader behavior. Verify with
+Chromium/WebKit accessibility trees and NVDA/Firefox plus VoiceOver/Safari for
+loading, failed-range Retry, sparse indices, expansion and focus restoration.
+If speech or navigation proves unreliable, revise the status-slot presentation
+before release while preserving semantic counts and no-fabricated-record rules.
+
+### Lifecycle presentation
+
+Keep global `dataState` vocabulary and add branch/range status. A failed root with
+no accepted result shows a full-body error; a failed branch offers local retry.
+A retained previous result carries an explicit stale caption and Refresh state.
+Do not mark the whole tree busy for one branch and suppress unrelated reading.
+Transient request errors preserve compatible cached values; authorization
+revocation and session consistency errors follow their wider invalidation policy.
 
 ## Verification and performance contract
 
@@ -352,14 +544,18 @@ Required cases:
    counts, short middle pages, wrong routes, aggregate-definition mismatches.
 2. A→B→A queries; same-range retries; independent requests out of order; collapse
    during fetch; auth changes; late success/error from a provider ignoring abort.
-3. Stable result reads under inserts/deletes/moves, including equal-size changes;
-   invalid token handling and coherent refreshed membership/counts/aggregates.
+3. Stable result reads under inserts/deletes/moves, including equal-size changes and different queries returning the same backend
+   revision token; explicit Refresh returning an unchanged token still clears
+   selection. Verify invalid token handling and coherent refreshed membership/counts/aggregates.
 4. Deep/wide groups, distant sibling seeks, scrolling across unloaded slots,
    parent collapse with focused descendant, variable heights and anchor recovery.
 5. Cache admission and pressure, metadata-cap handling, no repeated request loop,
    disposal and StrictMode, bounded old-session retention.
 6. Partial copy/export, unresolved selections, summary scope/completeness, and
-   unchanged existing local/manual-model behavior.
+   unchanged existing local/manual-model behavior. Type/runtime tests reject
+   top-level write callbacks in remote mode but accept shared editor-configured
+   columns and prove their edit predicates/renderers/parsers/validators/setters
+   are never called.
 7. Chromium/WebKit keyboard and accessibility-tree checks plus real screen-reader
    checks for loading, retry, expansion, and row-position speech.
 
@@ -388,14 +584,14 @@ tree data, master/detail, remote writes, and full-result export are later design
 Saved views and local undo/redo retain their roadmap position; this research does
 not silently approve implementing them or building a hosted backend.
 
-Before implementation planning, resolve:
+Remaining review and evidence gates:
 
-- Read-only release versus loaded-row editing and its additional guarantees.
-- Range-addressable, exact-child-count providers as the first supported contract.
-- Enforced result-token consistency, including practical adapter examples and
-  expiry/restart behavior under sustained writes.
-- Selection limits and the exact placeholder accessibility contract.
-- API compatibility strategy and measured resource defaults.
+- Review the remaining recommended copy/export, loading-slot, and API contracts.
+- Validate provider feasibility with a coherent revision-fence reference adapter
+  and an immutable-result fixture; no browser-held indefinite DB transactions.
+- Measure resource defaults and accessibility behavior in implementation spikes;
+  these are evidence gates, not unresolved user scope or claims of current results.
 
-This draft starts the design conversation. It is not approval to ship the proposed
+This draft records confirmed scope and recommended contracts for review. It is
+not approval to ship the proposed
 API or a promise that these unmeasured limits already hold.

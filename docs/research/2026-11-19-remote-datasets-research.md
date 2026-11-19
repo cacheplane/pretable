@@ -156,6 +156,13 @@ and cache, explicit sparse slots, and shared rendering/interaction contracts.
 Keep the existing local and application-managed paths supported. Use the server
 summary vocabulary already shipped in `0.21.0`.
 
+Product decisions confirmed on 2026-11-19 narrow this recommendation to read-only
+grouped browsing with range access and exact immediate-child counts, a consistent
+result with explicit Refresh, and selection retained within an accepted result
+session but cleared on Refresh or query changes. A backend revision token alone
+is not a selection scope: different queries may share the same revision. Header
+select-all covers loaded leaves in the expanded view, never unseen records.
+
 This research establishes design constraints, not measured performance or an
 approved public API. Backend adapter feasibility, variable-height sparse layout,
 assistive-technology behavior, cache admission limits, and public API compatibility
