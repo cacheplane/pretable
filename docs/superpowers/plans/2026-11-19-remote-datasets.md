@@ -13,9 +13,10 @@
 ## Authority, scope and execution rules
 
 The [approved behavioral design](../specs/2026-11-19-remote-datasets-design.md)
-and its window compatibility matrix govern this plan. User authorization covers
-planning; this document does not report implementation, passing runtime tests, or
-measured defaults. Research is in
+and its window compatibility matrix govern this plan. The user authorized
+task-scoped implementation with review between tasks on 2026-11-19. Checkboxes
+record reviewed completion; unchecked tasks make no passing-test or measured-default
+claim. Research is in
 [the evidence report](../../research/2026-11-19-remote-datasets-research.md).
 
 Work in an isolated implementation worktree from the reviewed design branch;
@@ -124,6 +125,22 @@ otherwise targets production. If occupied, choose a free port and change both
 commands together. Run performance workloads only on a quiet
 machine, record environment/cadence, and do not loosen thresholds to clear a run.
 
+## Execution record
+
+Implementation branch: `blove/remote-datasets-implementation`, starting at
+`8ce27c8bd`. Worktree: `/Users/blove/repos/pretable/.worktrees/remote-datasets-implementation`.
+Original workspace remains on `blove/calendar-date-formatting-design`; its only
+tracked modification is `.gitignore`, verified against the preserved binary diff
+before implementation. No runtime source has changed at initialization.
+
+Repository inspection correction: Task 2 core type tests live under
+`type-tests/core/`, because `type-tests/tsconfig.json` includes that directory
+and would silently omit a file placed directly under `type-tests/`.
+
+Task 1 is in progress. Each task requires separate specification and code-quality
+review before its completion checkboxes are checked. Record review commits and
+observed test evidence here as execution proceeds.
+
 ## Tasks
 
 ### Task 1: Compatibility baseline and executable window matrix
@@ -138,7 +155,7 @@ machine, record environment/cadence, and do not loosen thresholds to clear a run
 
 ### Task 2: Provider types and public API feasibility
 
-**Files:** Create `packages/core/src/remote/types.ts`, `query.ts`, `__tests__/query.test.ts`; modify `packages/core/src/public_api.ts`; create `type-tests/react/remote-model.types.tsx` and `type-tests/remote-model.types.ts`.
+**Files:** Create `packages/core/src/remote/types.ts`, `query.ts`, `__tests__/query.test.ts`; modify `packages/core/src/public_api.ts`; create `type-tests/react/remote-model.types.tsx` and `type-tests/core/remote-model.types.ts`.
 
 - [ ] **Step 1:** Write query identity cases for typed null/number/string keys, source/auth/schema changes, filters, group and leaf sorts, aggregate definitions, locale/projection/search and semantic registry versions.
 - [ ] **Step 2:** Add compile-time cases for rows/model inference remaining unchanged and remote versus manual-window/write inputs being exclusive; stage React type assertions with Task 10 if the surface overload is not yet present. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
