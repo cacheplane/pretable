@@ -104,21 +104,27 @@ export function createRemoteScheduler(options: Options = {}) {
   function removeSubscriber(j: Job, s: Subscriber) {
     if (j.subscribers.delete(s)) subscriberCount--;
   }
-  function finishSubscriber(j: Job, s: Subscriber, result: Result) {
-    if (s.done) return;
+  function stageSubscriber(j: Job, s: Subscriber, result: Result): () => void {
+    if (s.done) return () => {};
     s.done = true;
     // Only physically pending work can have a late authorization result.
     if (!j.active || !s.demand.onLateResult) removeSubscriber(j, s);
-    safe(() => s.demand.signal.removeEventListener("abort", s.abort));
     s.resolve(result);
+    const signal = s.demand.signal;
+    return () => safe(() => signal.removeEventListener("abort", s.abort));
   }
   function close(j: Job, result: Result) {
     if (j.closed) return;
     j.closed = true;
     if (dedupe.get(j.id) === j) dedupe.delete(j.id);
     if (!j.active) jobs.delete(j);
+    // Settle every owner before external timer/listener cleanup can reenter
+    // dispose and erase records. Promise reactions run after this transition.
+    const cleanup = [...j.subscribers].map((s) =>
+      stageSubscriber(j, s, result),
+    );
     clearTimers(j);
-    for (const s of [...j.subscribers]) finishSubscriber(j, s, result);
+    for (const removeListener of cleanup) removeListener();
     safe(() => j.controller.abort());
     pump();
   }
@@ -314,7 +320,7 @@ export function createRemoteScheduler(options: Options = {}) {
         resolve,
         done: false,
         abort: () => {
-          finishSubscriber(job, s, cancelled);
+          const cleanup = stageSubscriber(job, s, cancelled);
           const remaining = [...job.subscribers].filter(
             (subscriber) => !subscriber.done,
           );
@@ -323,6 +329,7 @@ export function createRemoteScheduler(options: Options = {}) {
             job.priority = Math.min(
               ...remaining.map((subscriber) => priority(subscriber.demand)),
             );
+          cleanup();
         },
       };
       job.subscribers.add(s);

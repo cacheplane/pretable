@@ -117,7 +117,10 @@ session controller; Task 8 must not compare that timestamp to the scheduler's
 elapsed-clock origin. Shared cancelled/timeout diagnostics and their nested error
 objects are frozen. Tests use deterministic fake time with
 no real sleeps. External observer errors are isolated; ownership is checked again
-after reentrant clock/abort boundaries. There is no callback priority resolver;
+after reentrant clock/abort boundaries. Completion stages every subscriber's
+promise settlement and ownership before external timer/listener cleanup, so
+reentrant disposal cannot strand callers or attach new owners to a closed job.
+There is no callback priority resolver;
 priorities are explicit values.
 
 ## Verification

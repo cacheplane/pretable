@@ -721,3 +721,108 @@ it("does not finalize a deduped result consumed by a remaining live owner", asyn
   s.dispose();
   expect(finalize).not.toHaveBeenCalled();
 });
+
+describe("reentrant completion cleanup", () => {
+  it.each(["timer", "listener"] as const)(
+    "settles all subscribers before reentrant %s cleanup disposes",
+    async (boundary) => {
+      let armed = false;
+      let now = 0;
+      const s = createRemoteScheduler({
+        maxActive: 2,
+        clock: {
+          now: () => now,
+          setTimeout: (f, ms) => setTimeout(f, ms),
+          clearTimeout: (h) => {
+            clearTimeout(h as ReturnType<typeof setTimeout>);
+            if (armed && boundary === "timer") s.dispose();
+          },
+        },
+      });
+      const d = deferred();
+      const unsettled = deferred();
+      const completions = [0, 0, 0];
+      const source = new AbortController();
+      const signal = {
+        get aborted() {
+          return source.signal.aborted;
+        },
+        addEventListener: source.signal.addEventListener.bind(source.signal),
+        removeEventListener: (type: "abort", listener: () => void) => {
+          source.signal.removeEventListener(type, listener);
+          if (armed && boundary === "listener") s.dispose();
+        },
+      };
+      void s
+        .schedule({ ...demand("physical"), signal }, () => d.promise)
+        .then(() => {
+          completions[0]!++;
+        });
+      void s
+        .schedule(demand("physical"), () => d.promise)
+        .then(() => {
+          completions[1]!++;
+        });
+      void s
+        .schedule(demand("unsettled"), () => unsettled.promise)
+        .then(() => {
+          completions[2]!++;
+        });
+      armed = true;
+      now = 30_001;
+      d.resolve(ok);
+      await tick();
+      expect(completions).toEqual([1, 1, 1]);
+      expect(s.getSnapshot()).toMatchObject({
+        disposed: true,
+        active: 1,
+        stalled: 1,
+        queued: 0,
+        subscribers: 0,
+        dedupeEntries: 0,
+        timers: 0,
+      });
+      unsettled.resolve(ok);
+      await tick();
+      expect(completions).toEqual([1, 1, 1]);
+      expect(s.getSnapshot().active).toBe(0);
+    },
+  );
+  it("cannot attach a reentrant scheduled owner to a closed job", async () => {
+    let armed = false;
+    const runs: string[] = [];
+    const s = createRemoteScheduler({
+      clock: {
+        now: () => 0,
+        setTimeout: (f, ms) => setTimeout(f, ms),
+        clearTimeout: (h) => {
+          clearTimeout(h as ReturnType<typeof setTimeout>);
+          if (armed) {
+            armed = false;
+            void s.schedule(demand("same"), async () => {
+              runs.push("new");
+              return ok;
+            });
+          }
+        },
+      },
+    });
+    const d = deferred();
+    const old = s.schedule(demand("same"), () => {
+      runs.push("old");
+      return d.promise;
+    });
+    armed = true;
+    d.resolve(ok);
+    await old;
+    await tick();
+    expect(runs).toEqual(["old", "new"]);
+    expect(s.getSnapshot()).toMatchObject({
+      active: 0,
+      queued: 0,
+      subscribers: 0,
+      dedupeEntries: 0,
+      timers: 0,
+    });
+  });
+});
