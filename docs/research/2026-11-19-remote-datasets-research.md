@@ -162,6 +162,11 @@ result with explicit Refresh, and selection retained within an accepted result
 session but cleared on Refresh or query changes. A backend revision token alone
 is not a selection scope: different queries may share the same revision. Header
 select-all covers loaded leaves in the expanded view, never unseen records.
+Full-result server CSV export is also confirmed for this release: all matching
+leaf records from the viewed result version in server group/sort order, including
+collapsed and unloaded branches. This requires a separate server export path,
+not repeated browser range reads; the export-job contract remains a design
+recommendation requiring provider conformance evidence.
 
 This research establishes design constraints, not measured performance or an
 approved public API. Backend adapter feasibility, variable-height sparse layout,

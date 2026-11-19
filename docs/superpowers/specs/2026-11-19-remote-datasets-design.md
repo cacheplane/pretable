@@ -26,7 +26,8 @@ query changes, expansion, and refresh remain read operations.
 | Range addressing and exact child counts | User confirmed         | Cursor-only/unknown-count navigation deferred                             |
 | Consistency and refresh                 | User confirmed         | Stable result version; explicit Refresh after expiry                      |
 | Selection                               | User confirmed         | Result-scoped IDs; loaded-view select-all; clear on Refresh/query change  |
-| Partial copy/export                     | Design recommendation  | No hidden fetching; complete copy or explicit partial CSV                 |
+| Full-result server export               | User confirmed         | All matching leaf records, same result version, server group/sort order   |
+| Clipboard and loaded CSV                | Design recommendation  | Complete copy or explicitly partial loaded CSV; no hidden fetching        |
 | API integration and accessibility       | Design recommendations | Separate remote input/read handle; explicit loading slots                 |
 | Memory policy                           | Design recommendation  | Global admission limits and bounded metadata; numbers require measurement |
 
@@ -451,8 +452,60 @@ naming. Report unloaded records and collapsed groups where applicable; group
 aggregate values can be complete even while the leaf export is partial. Determine
 whole-result completeness from proven leaf coverage and expansion, never root
 sibling count or resident count alone. Summaries remain excluded by default.
-Existing local/manual CSV API behavior stays unchanged. Full-result server export
-is deferred and does not hide inside this synchronous loaded export path.
+Existing local/manual CSV API behavior stays unchanged.
+
+### Full-result server export
+
+Full-result server export is required in the first release. The user confirmed
+CSV containing all matching leaf records, in server-defined group/sort order,
+from the same result version as the viewed query. Collapsed groups do not exclude
+records. Group headers, group aggregates, and summary rows are excluded; grouped
+report formats remain a separate future design. This action is labelled Export
+all matching rows and remains distinct from the explicitly partial loaded exports.
+
+Recommended contract: the application supplies an export-job adapter alongside
+the range provider. Export creation captures the accepted query identity, result
+token, semantic registry version, ordered export column IDs, and supported
+serialization options. The server validates these against its own authorization
+and column registry; client render functions are never transmitted or evaluated.
+An exportable column needs a server serialization definition. Unsupported custom
+formatting is reported before starting, never silently replaced. The adapter must
+honor existing CSV formula protection and exclusion policy.
+
+The server traverses the complete result and writes the artifact; the browser
+never gathers all ranges or buffers the entire dataset. Creation uses an
+idempotency key so a retried start does not create duplicate jobs. A job handle
+exposes queued, running, ready, failed, cancelled, and expired states, with bounded
+polling or application-managed notifications. Progress is indeterminate unless
+the server supplies meaningful work counts; root sibling counts are not leaf
+export totals. Explicit cancellation is best effort and its acknowledgement is
+separate from local UI cancellation. A completed empty result produces a
+header-only CSV with zero records, distinct from an empty selected-loaded export.
+
+The export must pin or otherwise retain the captured result version for its job
+lifetime. If that version cannot be exported, report result expiry and require
+explicit Refresh followed by a new export. Never silently export latest data.
+A later grid Refresh does not retarget an existing job: label its originating
+query/version and creation time so the downloaded file is not mistaken for the
+new view. The application owns durable job persistence, server resource limits,
+artifact retention, and delivery. The grid owns the start/status/cancel/download
+controls and releases its subscriptions on disposal without claiming the server
+job was cancelled.
+
+Ready metadata includes record count, captured query/version identity, filename,
+format, and artifact expiry. Deliver a server download link or application-owned
+download action rather than collecting bytes in grid memory. Authorization must
+be checked at job creation, status, and download; source/auth replacement removes
+protected job metadata and download controls. The adapter must not expose
+credentials in URLs or diagnostics. Expired downloads offer explicit regeneration
+only if the captured version is still available; otherwise require Refresh.
+
+Provider conformance must cover same-version output under concurrent mutations,
+collapsed and unloaded branches, deterministic ordering, excluded/custom columns,
+formula protection, duplicate starts, empty results, cancellation races, expired
+results/artifacts, auth revocation, and large exports with bounded browser memory.
+The reference provider and demo must implement this path; a placeholder callback
+alone does not satisfy the first-release requirement.
 
 Read-only scope is confirmed. Remote cells expose read-only semantics even if a
 shared column definition contains an editor configuration. Such column settings
@@ -576,11 +629,12 @@ All slices below contribute to **one first release containing grouping**:
 1. Provider conformance fixtures and read/slot API compatibility design.
 2. Query sessions, branch-range scheduler/cache, and sparse tree oracle.
 3. Shared layout, group rendering, navigation, counts, summaries, and lifecycle.
-4. Reference grouped adapter, documentation, consumer/type tests, accessibility
+4. Full-result export adapter, server job lifecycle, download UI, and conformance fixtures.
+5. Reference grouped adapter, documentation, consumer/type tests, accessibility
    evidence, and remote memory/performance gates.
 
 Live invalidation/replay, cursor-only unknown-count navigation, pivot, arbitrary
-tree data, master/detail, remote writes, and full-result export are later designs.
+tree data, master/detail, remote writes, and grouped report exports are later designs.
 Saved views and local undo/redo retain their roadmap position; this research does
 not silently approve implementing them or building a hosted backend.
 

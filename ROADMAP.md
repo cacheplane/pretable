@@ -63,6 +63,8 @@ immediate-child counts, confirmed on 2026-11-19. Browsing uses one consistent
 result version with explicit Refresh. Selection survives scrolling and collapse
 within that result, clears on Refresh or query change, and selects only loaded
 leaves in the expanded view through the header checkbox.
+Full-result server CSV export is also required: all matching leaf records from
+the viewed result version, regardless of collapsed or unloaded branches.
 Flat-only delivery does not satisfy this requirement.
 
 The first design must distinguish query identity from result consistency,
