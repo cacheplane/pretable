@@ -242,6 +242,8 @@ export class RemoteCache {
     readonly releaseScopes?: readonly number[];
     readonly expectedEpoch?: number;
   }): CachePreparation {
+    // Even a refused successor revokes the previous speculative candidate.
+    this.plans = new WeakMap();
     const epoch = this.epoch;
     if (input.expectedEpoch !== undefined && input.expectedEpoch !== epoch)
       return failure("stale-plan");

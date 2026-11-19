@@ -1,5 +1,6 @@
 // Actual public-model default-budget diagnostic. Run: node --import tsx scripts/probe-remote-publication-performance.mjs
 import { performance } from "node:perf_hooks";
+import { createHook } from "node:async_hooks";
 import { loadavg } from "node:os";
 import { createRemoteModel } from "../packages/core/src/remote/create-remote-model.ts";
 import { remoteGroupId } from "../packages/core/src/remote/query.ts";
@@ -19,13 +20,29 @@ const nodeAt = (ordinal) => {
     aggregates: {},
   };
 };
+let providerPreparationMs = 0;
+const processingSlices = [];
+const starts = new Map();
+const callbackHook = createHook({
+  before(id) {
+    starts.set(id, performance.now());
+  },
+  after(id) {
+    const start = starts.get(id);
+    if (start !== undefined) {
+      processingSlices.push(performance.now() - start);
+      starts.delete(id);
+    }
+  },
+});
 const provider = {
   capabilities: { ...capabilities, maxRangeSize: 1000 },
   async open(_query, queryKey) {
     return { ok: true, value: { ...session, queryKey, rootCount: 100000000 } };
   },
   async read(request) {
-    return {
+    const start = performance.now();
+    const answer = {
       ok: true,
       value: {
         ...request,
@@ -36,13 +53,26 @@ const provider = {
         ),
       },
     };
+    providerPreparationMs += performance.now() - start;
+    return answer;
+  },
+  async release() {},
+  async summary() {
+    return { ok: false, error: { code: "invalid-response" } };
   },
 };
-const model = createRemoteModel(provider, { blockSize: 1000 });
+const blockSize = Number(process.env.REMOTE_BLOCK_SIZE ?? 1000);
+const model = createRemoteModel(provider, { blockSize });
+callbackHook.enable();
 await model.setQuery({ ...groupedQuery, aggregates: [] });
 const demandStart = performance.now();
-await model.demandViewport({ start: 0, end: 5000 });
+const demand = model.demandViewport({ start: 0, end: 5000 });
+const demandCommandMs = performance.now() - demandStart;
+await demand;
 const fillMs = performance.now() - demandStart;
+await new Promise((resolve) => setImmediate(resolve));
+callbackHook.disable();
+starts.clear();
 const initial = model.getDiagnostics();
 const expansions = [];
 let acceptedExpansions = 0,
@@ -79,6 +109,11 @@ console.log(
     {
       recordedAt: new Date().toISOString(),
       loadavg: loadavg(),
+      blockSize,
+      providerDelayMs: 0,
+      providerPreparationMs,
+      demandCommandMs,
+      fillProcessingCallbacks: summarize(processingSlices),
       initial,
       final: model.getDiagnostics(),
       fillMs,

@@ -26,7 +26,7 @@ export function createModelView<TRow extends object, TColumns>(
   blockSize: number,
 ): PretableRemoteModelSnapshot<TRow> {
   const view = state.view;
-  const groups = new Map(retention.groups);
+  const groups = retention.groups;
   const index = view
     ? retention.index(view.session.rootCount, groups)
     : undefined;

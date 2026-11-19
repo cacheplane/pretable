@@ -21,7 +21,8 @@ const addressKey = (r: {
 }) => rangeAddress(r.route, r.start, r.end);
 /** The cache is the sole retention authority. These maps are indexes into the
  * same frozen accepted objects; their map/key/descriptor overhead is charged.
- * Planning scans bounded retained state; incremental planning is Task 9. */
+ * Metadata-only commands reuse compatible topology. Payload changes prune the
+ * bounded retained state and submit only changed records to cache validation. */
 export class ModelRetention<TRow extends object> {
   readonly cache: RemoteCache;
   records = new Map<string, CacheRecord>();
@@ -31,6 +32,15 @@ export class ModelRetention<TRow extends object> {
   current = 0;
   capacity: CacheFailure | undefined;
   private scopes = new Set<number>();
+  private residentGroups = new Set<string>();
+  private geometry:
+    | {
+        rootCount: number;
+        groups: Map<string, ModelGroup>;
+        expanded: Set<string>;
+        index: SparseIndex;
+      }
+    | undefined;
   constructor(readonly options: PretableRemoteModelOptions) {
     this.cache = new RemoteCache(options.limits);
   }
@@ -55,14 +65,17 @@ export class ModelRetention<TRow extends object> {
       if (record.scope === scope) this.records.delete(key);
     if (this.visible === scope) {
       this.visible = 0;
-      this.groups.clear();
+      this.groups = new Map();
+      this.residentGroups = new Set();
+      this.geometry = undefined;
     }
   }
   clearBodies() {
     for (const scope of [...this.scopes]) this.close(scope);
   }
   clearIntent() {
-    this.expanded.clear();
+    this.expanded = new Set();
+    this.geometry = undefined;
     for (const [key, record] of this.records)
       if (record.kind === "expansion") {
         this.cache.drop(-1, record.key);
@@ -91,10 +104,80 @@ export class ModelRetention<TRow extends object> {
       this.capacity = "stale-plan";
       return;
     }
+    // With no payload/protection changes the accepted topology is compatible.
+    // A collapse that can release an orphan ancestor takes the full pruning path.
+    const metadataOnly =
+      !input.root &&
+      !input.protectedRanges &&
+      (input.additions ?? []).every(
+        (r) => r.kind === "external" || r.kind === "expansion",
+      ) &&
+      (input.drops ?? []).every((r) => {
+        const kind = this.records.get(this.id(r))?.kind;
+        return !kind || kind === "external" || kind === "expansion";
+      }) &&
+      (!input.expanded ||
+        [...this.expanded].every(
+          (id) => input.expanded!.has(id) || this.residentGroups.has(id),
+        ));
+    if (metadataOnly) {
+      const prepared = this.cache.prepare({
+        records: input.additions ?? [],
+        drops: input.drops,
+        expectedEpoch,
+      });
+      if (prepared.ok) {
+        const changed = new Set(
+          [...(input.additions ?? []), ...(input.drops ?? [])].map((r) =>
+            this.id(r),
+          ),
+        );
+        if (prepared.plan.evictions.every((r) => changed.has(this.id(r)))) {
+          const groups = this.groups,
+            expanded = input.expanded ?? this.expanded;
+          let geometry =
+            this.geometry?.expanded === expanded ? this.geometry : undefined;
+          return {
+            groups,
+            evictions: [] as PretableRemoteRange<TRow>[],
+            index: (rootCount: number) => {
+              const index = this.index(rootCount, groups, expanded);
+              geometry = { rootCount, groups, expanded, index };
+              return index;
+            },
+            discard: () => {
+              geometry = undefined;
+              this.cache.discard(prepared.plan);
+            },
+            commit: () => {
+              if (!this.cache.commit(prepared.plan)) {
+                geometry = undefined;
+                return false;
+              }
+              for (const r of input.drops ?? [])
+                this.records.delete(this.id(r));
+              for (const r of input.additions ?? [])
+                this.records.set(this.id(r), r);
+              this.expanded = expanded;
+              this.geometry = geometry;
+              geometry = undefined;
+              return true;
+            },
+          };
+        }
+        this.cache.discard(prepared.plan);
+      }
+      // Pressure may evict payload together with acceptance evidence. Re-plan
+      // through the shared pruning transaction, never silently drop that evidence.
+    }
     const candidate = new Map(this.records);
     if (input.protectedRanges) {
       for (const [key, record] of candidate)
-        if (record.kind === "payload" && record.scope === this.visible)
+        if (
+          record.kind === "payload" &&
+          record.scope === this.visible &&
+          Boolean(record.protected) !== input.protectedRanges.has(record.key)
+        )
           candidate.set(key, {
             ...record,
             protected: input.protectedRanges.has(record.key),
@@ -118,7 +201,7 @@ export class ModelRetention<TRow extends object> {
     const known = input.root
       ? new Map<string, ModelGroup>()
       : new Map(this.groups);
-    for (const r of candidate.values()) {
+    for (const r of input.additions ?? []) {
       if (r.kind !== "payload" || r.scope !== visible) continue;
       const range = r.value as PretableRemoteRange<TRow>;
       range.entries.forEach((node, offset) => {
@@ -144,7 +227,6 @@ export class ModelRetention<TRow extends object> {
         if (group.parent !== null) retain(group.parent);
         groups.set(id, group);
       };
-      for (const id of expanded) retain(id);
       const records = [...candidate.values()];
       const stores = new Map<string, PretableRemoteRoute>();
       for (const r of records) {
@@ -155,42 +237,82 @@ export class ModelRetention<TRow extends object> {
         for (const node of range.entries)
           if (node.kind === "group") retain(node.id);
       }
+      const residentGroups = new Set(groups.keys());
+      for (const id of expanded) retain(id);
       if (visible) {
-        records.push({
-          scope: visible,
-          key: "topology:root",
-          kind: "topology",
-          value: undefined,
-          metadataBytes: 64,
-        });
-        for (const group of groups.values())
-          records.push({
+        records.push(
+          this.records.get(
+            this.id({ scope: visible, key: "topology:root" }),
+          ) ?? {
             scope: visible,
-            key: `topology:${group.id}`,
+            key: "topology:root",
             kind: "topology",
-            value: group,
-            metadataBytes: wireBytes(group) * 2,
-          });
+            value: undefined,
+            metadataBytes: 64,
+          },
+        );
+        for (const group of groups.values()) {
+          const previous = this.records.get(
+            this.id({ scope: visible, key: `topology:${group.id}` }),
+          );
+          records.push(
+            previous?.value === group
+              ? previous
+              : {
+                  scope: visible,
+                  key: `topology:${group.id}`,
+                  kind: "topology",
+                  value: group,
+                  metadataBytes: wireBytes(group) * 2,
+                },
+          );
+        }
         for (const [key, route] of stores)
-          records.push({
-            scope: visible,
-            key: `store:${key}`,
-            kind: "store",
-            value: route,
-            metadataBytes: wireBytes(route),
-            protected: true,
-          });
+          records.push(
+            this.records.get(
+              this.id({ scope: visible, key: `store:${key}` }),
+            ) ?? {
+              scope: visible,
+              key: `store:${key}`,
+              kind: "store",
+              value: route,
+              metadataBytes: wireBytes(route),
+              protected: true,
+            },
+          );
       }
+      const retained = new Map(records.map((r) => [this.id(r), r]));
       const prepared = this.cache.prepare({
-        records,
+        records: records.filter((r) => this.records.get(this.id(r)) !== r),
         drops: [...this.records.values()]
-          .filter((r) => !releaseScopes.includes(r.scope))
+          .filter(
+            (r) =>
+              !releaseScopes.includes(r.scope) && !retained.has(this.id(r)),
+          )
           .map((r) => ({ scope: r.scope, key: r.key })),
         releaseScopes,
         expectedEpoch,
       });
+      if (
+        prepared.ok &&
+        prepared.plan.evictions.some(
+          (r) =>
+            r.kind === "payload" &&
+            retained.has(this.id(r)) &&
+            retained.get(this.id(r)) === this.records.get(this.id(r)),
+        )
+      ) {
+        for (const eviction of prepared.plan.evictions)
+          if (
+            eviction.kind === "payload" &&
+            retained.get(this.id(eviction)) ===
+              this.records.get(this.id(eviction))
+          )
+            candidate.delete(this.id(eviction));
+        this.cache.discard(prepared.plan);
+        continue;
+      }
       if (prepared.ok) {
-        const retained = new Map(records.map((r) => [this.id(r), r]));
         const evictions = [...this.records.values()]
           .filter(
             (r) =>
@@ -198,14 +320,29 @@ export class ModelRetention<TRow extends object> {
               (!retained.has(this.id(r)) || incoming.has(this.id(r))),
           )
           .map((r) => r.value as PretableRemoteRange<TRow>);
+        let geometry: typeof this.geometry;
         return {
+          index: (rootCount: number) => {
+            const index = this.index(rootCount, groups, expanded);
+            geometry = { rootCount, groups, expanded, index };
+            return index;
+          },
           evictions,
           groups,
-          discard: () => this.cache.discard(prepared.plan),
+          discard: () => {
+            geometry = undefined;
+            this.cache.discard(prepared.plan);
+          },
           commit: () => {
-            if (!this.cache.commit(prepared.plan)) return false;
+            if (!this.cache.commit(prepared.plan)) {
+              geometry = undefined;
+              return false;
+            }
             this.records = retained;
             this.groups = groups;
+            this.residentGroups = residentGroups;
+            this.geometry = geometry;
+            geometry = undefined;
             this.expanded = expanded;
             this.visible = visible;
             for (const scope of releaseScopes) this.scopes.delete(scope);
@@ -274,6 +411,12 @@ export class ModelRetention<TRow extends object> {
     };
   }
   index(rootCount: number, groups = this.groups, expanded = this.expanded) {
+    if (
+      this.geometry?.rootCount === rootCount &&
+      this.geometry.groups === groups &&
+      this.geometry.expanded === expanded
+    )
+      return this.geometry.index;
     const index = new SparseIndex(rootCount, {
       maxNodes: this.cache.limits.topology,
       maxDepth: this.cache.limits.depth,
@@ -283,6 +426,8 @@ export class ModelRetention<TRow extends object> {
       groups.values(),
       [...expanded].filter((id) => groups.has(id)),
     );
+    if (groups === this.groups && expanded === this.expanded)
+      this.geometry = { rootCount, groups, expanded, index };
     return index;
   }
 }

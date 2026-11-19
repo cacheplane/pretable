@@ -240,7 +240,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
       // Stage topology before committing any owner. SparseIndex validates exact
       // safe extents and ancestry; observers never see a mutable index instance.
       try {
-        retention.index(input.session.rootCount, plan.groups);
+        plan.index(input.session.rootCount);
       } catch {
         retention.capacity = "intent-capacity";
         plan.discard();
@@ -636,8 +636,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
       return false;
     }
     try {
-      if (snapshot.displayCount)
-        retention.index(snapshot.rootCount, plan.groups, next);
+      if (snapshot.displayCount) plan.index(snapshot.rootCount);
     } catch {
       retention.capacity = "intent-capacity";
       plan.discard();
