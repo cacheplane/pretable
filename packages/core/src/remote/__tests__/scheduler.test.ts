@@ -669,3 +669,55 @@ describe("absolute deadlines when timer delivery is delayed", () => {
     if (!timed.ok) expect(Object.isFrozen(timed.error)).toBe(true);
   });
 });
+
+it("releases an open exactly once when disposal lands after guarded completion", async () => {
+  const s = createRemoteScheduler();
+  const f = createDeferredProvider<Row, Columns>(capabilities);
+  const controller = createRemoteSessionController(f.provider, {
+    rootRangeSize: 2,
+    invoke: s.schedule,
+  });
+  const pending = controller.setQuery(query);
+  f.opens[0]!.resolve({
+    ok: true,
+    value: { ...session, queryKey: f.opens[0]!.request.queryKey },
+  });
+  await Promise.resolve();
+  controller.dispose();
+  s.dispose();
+  await pending;
+  await tick();
+  expect(f.released).toHaveLength(1);
+  expect(f.reads).toHaveLength(0);
+  expect(s.getSnapshot()).toMatchObject({
+    active: 0,
+    subscribers: 0,
+    timers: 0,
+  });
+  controller.dispose();
+  s.dispose();
+  await tick();
+  expect(f.released).toHaveLength(1);
+});
+
+it("does not finalize a deduped result consumed by a remaining live owner", async () => {
+  const s = createRemoteScheduler();
+  const d = deferred();
+  const a = new AbortController();
+  const finalize = vi.fn();
+  const first = s.schedule(
+    { ...demand("resource", "visible", a.signal), onDiscardedResult: finalize },
+    () => d.promise,
+  );
+  const second = s.schedule(
+    { ...demand("resource"), onDiscardedResult: finalize },
+    () => d.promise,
+  );
+  a.abort();
+  await first;
+  d.resolve(ok);
+  expect(await second).toEqual(ok);
+  expect(finalize).not.toHaveBeenCalled();
+  s.dispose();
+  expect(finalize).not.toHaveBeenCalled();
+});

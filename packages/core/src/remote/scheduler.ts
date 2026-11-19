@@ -72,6 +72,7 @@ export function createRemoteScheduler(options: Options = {}) {
     subscribers: Set<Subscriber>;
     controller: AbortController;
     run: (signal: PretableRemoteSignal) => Promise<Result>;
+    finalizeDiscarded?: (value: unknown) => void;
     attempts: number;
     active: boolean;
     closed: boolean;
@@ -107,8 +108,7 @@ export function createRemoteScheduler(options: Options = {}) {
     if (s.done) return;
     s.done = true;
     // Only physically pending work can have a late authorization result.
-    if (!j.active || (!s.demand.onLateResult && !s.demand.onDiscardedResult))
-      removeSubscriber(j, s);
+    if (!j.active || !s.demand.onLateResult) removeSubscriber(j, s);
     safe(() => s.demand.signal.removeEventListener("abort", s.abort));
     s.resolve(result);
   }
@@ -162,8 +162,8 @@ export function createRemoteScheduler(options: Options = {}) {
     if (remaining !== undefined) timer(j, Math.min(delay, remaining), callback);
   }
   function settled(j: Job, raw: unknown) {
-    // Capture request-owned cleanup before normalization/clock callbacks can
-    // reenter disposal. Values are used synchronously, never retained as data.
+    // Authority subscribers can be detached on disposal; the physical job owns
+    // its resource finalizer until settlement, independently of those records.
     const subscribers = [...j.subscribers];
     const result = validateRemoteResult<unknown>(raw);
     remainingTime(j);
@@ -172,11 +172,18 @@ export function createRemoteScheduler(options: Options = {}) {
     for (const s of subscribers) {
       if (!s.done) continue;
       removeSubscriber(j, s);
-      if (result.ok) safe(() => s.demand.onDiscardedResult?.(result.value));
-      else if (!disposed) safe(() => s.demand.onLateResult?.(result));
+      if (!result.ok && !disposed) safe(() => s.demand.onLateResult?.(result));
+    }
+    // A success is discarded only if no live consumer can receive it. One
+    // cancelled deduped subscriber must not release another owner's resource.
+    if (result.ok) {
+      const finalize = j.finalizeDiscarded;
+      j.finalizeDiscarded = undefined;
+      if (j.closed || disposed) safe(() => finalize?.(result.value));
     }
     j.active = false;
     if (j.closed || disposed) {
+      j.finalizeDiscarded = undefined;
       jobs.delete(j);
       for (const s of [...j.subscribers]) removeSubscriber(j, s);
       pump();
@@ -284,6 +291,7 @@ export function createRemoteScheduler(options: Options = {}) {
             subscribers: new Set(),
             controller: new AbortController(),
             run,
+            finalizeDiscarded: demand.onDiscardedResult,
             attempts: 0,
             active: false,
             closed: false,
