@@ -159,7 +159,17 @@ retention. Fence mutation returns expiry rather than a consistency contradiction
 Website provider 18 tests (independently rerun), remote-core 71 tests, build,
 core/website typechecks and focused lint/format checks passed. See
 `status/remote-datasets/provider-feasibility.md` for limits and production scope.
-Task 4 is in progress.
+Task 4 complete through `576477ad`: specification and quality reviews passed.
+A quality-found max-safe-integer inverse-search termination bug was reproduced
+and fixed with a bounded regression. Focused 7 sparse-index and 8 remote-layout
+tests pass; unchanged layout suite 161 and renderer suite 183 passed before the
+final regression addition. Core/renderer builds/typechecks and lint passed.
+Chromium/WebKit measured a 33,554,428px CSS ceiling; an 8M physical mapping proves
+distant seeks, actual wheel movement and stable-ID anchoring. See
+`status/remote-datasets/layout-feasibility.md` and recorded browser evidence.
+The initial feasibility checkpoint is reviewed. Scheduled/incremental measurement
+work and full gesture integration remain Task 9 gates, not 8ms claims.
+Task 5 is in progress.
 
 ## Tasks
 
@@ -197,11 +207,11 @@ Task 4 is in progress.
 
 **Files:** Create `packages/core/src/remote/sparse-index.ts`, `__tests__/sparse-index.test.ts`; create `packages/renderer-dom/src/remote-layout.ts`, `__tests__/remote-layout.test.ts`; create `status/remote-datasets/layout-feasibility.md`.
 
-- [ ] **Step 1:** Write a small eager-tree oracle and seeded sequences of expand/collapse/rank lookup. Assert 20 + 10,000 + 50,000 = 60,020 display slots while resident payload remains bounded.
-- [ ] **Step 2:** Add disjoint branch ranges, root-only flat ranges, depth limits, unknown expansion ancestors, far seeks and repeated collapse/refetch. Count allocated index nodes for 1M versus 100M logical leaves at equal residency. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement compressed sibling intervals and subtree extents with bounded topology. Prototype variable-height anchoring and actual browser scroll-height ceilings before committing to geometry. If segmentation is necessary, specify explicit physical/logical mapping in the evidence file and test reveal, hit testing, telemetry and scroll round trips; retain the existing manual global-coordinate contract. Resolve this gate before React integration.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/sparse-index.test.ts`. Expected: Oracle ranks match after every operation; no per-unseen-row allocation. Run renderer tests and a browser probe to record geometric limits separately; unit tests do not prove browser feasibility.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: add sparse grouped projection index`.
+- [x] **Step 1:** Write a small eager-tree oracle and seeded sequences of expand/collapse/rank lookup. Assert 20 + 10,000 + 50,000 = 60,020 display slots while resident payload remains bounded.
+- [x] **Step 2:** Add disjoint branch ranges, root-only flat ranges, depth limits, unknown expansion ancestors, far seeks and repeated collapse/refetch. Count allocated index nodes for 1M versus 100M logical leaves at equal residency. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement compressed sibling intervals and subtree extents with bounded topology. Prototype variable-height anchoring and actual browser scroll-height ceilings before committing to geometry. If segmentation is necessary, specify explicit physical/logical mapping in the evidence file and test reveal, hit testing, telemetry and scroll round trips; retain the existing manual global-coordinate contract. Resolve this gate before React integration.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/sparse-index.test.ts`. Expected: Oracle ranks match after every operation; no per-unseen-row allocation. Run renderer tests and a browser probe to record geometric limits separately; unit tests do not prove browser feasibility.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: add sparse grouped projection index`.
 
 ### Task 5: Session acceptance and response validation
 
