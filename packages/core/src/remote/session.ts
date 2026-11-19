@@ -105,15 +105,26 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     rootRangeSize > provider.capabilities.maxRangeSize
   )
     throw new Error("invalid root range size");
-  function publish(next: RemoteSessionSnapshot<TRow>) {
+  function stage(next: RemoteSessionSnapshot<TRow>) {
     snapshot = Object.freeze(next);
-    for (const listener of listeners) {
+    return snapshot;
+  }
+  function notify(expected: RemoteSessionSnapshot<TRow>) {
+    for (const listener of [...listeners]) {
+      if (snapshot !== expected) return;
+      if (!listeners.has(listener)) continue;
       try {
         listener();
       } catch {
-        /* Observers cannot alter acceptance. */
+        /* Observers cannot interrupt acceptance. */
       }
     }
+  }
+  function publish(next: RemoteSessionSnapshot<TRow>) {
+    notify(stage(next));
+  }
+  function active(c: Context) {
+    return !disposed && current === c && c.generation === generation;
   }
   function reset(
     reason: RemoteLifecycleReset["reason"],
@@ -139,16 +150,20 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       /* Best effort, including synchronous adapter throws. */
     }
   }
-  function stop(c: Context) {
+  /** Detach ownership before running any adapter/abort callbacks. The returned
+   * cleanup touches only captured resources, never mutable current state. */
+  function stop(c: Context): () => void {
     c.frozen = true;
-    for (const owner of c.owners.values()) owner.abort();
+    const owners = [...c.owners.values()];
     c.owners.clear();
     c.requests.clear();
-    if (c.session && !c.released) {
-      c.released = true;
-      release(c.session);
-    }
+    const session = !c.released ? c.session : undefined;
+    if (session) c.released = true;
     if (c.validator !== visibleValidator) c.validator?.dispose();
+    return () => {
+      for (const owner of owners) owner.abort();
+      if (session) release(session);
+    };
   }
   function purge() {
     visibleValidator?.dispose();
@@ -164,19 +179,19 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     );
   }
   function ownerFor(c: Context, key: string) {
-    c.owners.get(key)?.abort();
+    const previous = c.owners.get(key);
     const owner = new AbortController();
     c.owners.set(key, owner);
+    previous?.abort();
     return owner;
   }
   function expired(c: Context): boolean {
-    if (
-      c.session?.expiresAt !== undefined &&
-      now() >= c.session.expiresAt &&
-      !c.frozen
-    )
-      handleError(c, { code: "expired" });
-    return c.frozen;
+    if (c.session?.expiresAt !== undefined && !c.frozen) {
+      const time = now();
+      if (!active(c)) return true;
+      if (time >= c.session.expiresAt) handleError(c, { code: "expired" });
+    }
+    return !active(c) || c.frozen;
   }
   async function invoke<T>(
     c: Context,
@@ -186,7 +201,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     run: () => Promise<PretableRemoteResult<T>>,
   ): Promise<PretableRemoteResult<T>> {
     const guarded = () => {
-      if (!owns(c, key, owner) || expired(c))
+      if (!owns(c, key, owner) || expired(c) || !owns(c, key, owner))
         return Promise.resolve<PretableRemoteResult<T>>({
           ok: false,
           error: { code: "cancelled" },
@@ -246,12 +261,13 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       c.session.resultToken === visible.resultToken
     ) {
       purge();
-      reset("session-unauthorized", undefined, c.generation);
-      publish({
+      const next = stage({
         state: current && !current.frozen ? "loading" : "error",
         generation,
         ...(current?.frozen && snapshot.error ? { error: snapshot.error } : {}),
       });
+      reset("session-unauthorized", undefined, c.generation);
+      notify(next);
       return true;
     }
     return false;
@@ -281,8 +297,12 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       errors: Object.freeze(errors),
     });
   }
-  function denyRange(request: PretableRemoteRangeRequest) {
-    if (!snapshot.view || !current?.published) return;
+  function denyRange(
+    c: Context,
+    request: PretableRemoteRangeRequest,
+  ): () => void {
+    if (!snapshot.view || !c.published) return () => {};
+    const cancelled: AbortController[] = [];
     const deniedRoute = canonicalRemoteRoute(request.route);
     const deniedGroups = snapshot.view.ranges
       .filter(
@@ -307,7 +327,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     );
     // Revocation also invalidates still-pending overlapping attempts. Explicit
     // subsequent read calls may retry after the application recovers permission.
-    for (const [key, pending] of current.requests) {
+    for (const [key, pending] of c.requests) {
       const affected =
         (canonicalRemoteRoute(pending.route) === deniedRoute &&
           pending.start < request.end &&
@@ -318,27 +338,32 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
             canonicalRemoteRoute(route),
         );
       if (affected) {
-        current.owners.get(key)?.abort();
-        current.owners.delete(key);
-        current.requests.delete(key);
+        const owner = c.owners.get(key);
+        if (owner) cancelled.push(owner);
+        c.owners.delete(key);
+        c.requests.delete(key);
       }
     }
     for (const r of removed)
       visibleValidator?.releaseRange(r.route, r.start, r.end);
     for (const scope of ["filtered", "all"] as const) {
       const key = `summary:${scope}`;
-      current.owners.get(key)?.abort();
-      current.owners.delete(key);
+      const owner = c.owners.get(key);
+      if (owner) cancelled.push(owner);
+      c.owners.delete(key);
     }
     visibleValidator?.releaseSummary("filtered");
     visibleValidator?.releaseSummary("all");
-    publish({
+    stage({
       ...snapshot,
       view: viewWith(
         snapshot.view.ranges.filter((r) => !removed.includes(r)),
         [],
       ),
     });
+    return () => {
+      for (const owner of cancelled) owner.abort();
+    };
   }
   function handleError(
     c: Context,
@@ -346,43 +371,52 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     key?: string,
     request?: PretableRemoteRangeRequest,
   ) {
-    if (current !== c || disposed) return;
+    if (!active(c)) return;
+    let cleanup = () => {};
+    let resetReason: RemoteLifecycleReset["reason"] | undefined;
+    let resetRange: RemoteLifecycleReset["range"] | undefined;
+    let next: RemoteSessionSnapshot<TRow>;
     if (
       error.code === "consistency" ||
       (error.code === "unauthorized" && error.scope === "session")
     ) {
-      stop(c);
+      cleanup = stop(c);
       purge();
-      reset(
-        error.code === "consistency" ? "consistency" : "session-unauthorized",
-      );
-      publish({ state: "error", generation, error });
-      return;
-    }
-    if (error.code === "expired") {
-      stop(c);
-      publish({
+      resetReason =
+        error.code === "consistency" ? "consistency" : "session-unauthorized";
+      next = stage({ state: "error", generation: c.generation, error });
+    } else if (error.code === "expired") {
+      cleanup = stop(c);
+      next = stage({
         state: snapshot.view ? "stale" : "error",
-        generation,
+        generation: c.generation,
         ...(snapshot.view ? { view: snapshot.view } : {}),
         error,
       });
-      return;
+    } else {
+      if (error.code === "unauthorized" && error.scope === "range" && request) {
+        cleanup = denyRange(c, request);
+        resetReason = "range-unauthorized";
+        resetRange = request;
+      }
+      if (!c.published) cleanup = stop(c);
+      next = stage({
+        ...snapshot,
+        state: snapshot.view ? (c.published ? "ready" : "stale") : "error",
+        generation: c.generation,
+        error,
+        ...(key
+          ? { errors: Object.freeze({ ...snapshot.errors, [key]: error }) }
+          : {}),
+      });
     }
-    if (error.code === "unauthorized" && error.scope === "range" && request) {
-      denyRange(request);
-      reset("range-unauthorized", request);
-    }
-    if (!c.published) stop(c);
-    publish({
-      ...snapshot,
-      state: snapshot.view ? (c.published ? "ready" : "stale") : "error",
-      generation,
-      error,
-      ...(key
-        ? { errors: Object.freeze({ ...snapshot.errors, [key]: error }) }
-        : {}),
-    });
+    // The entire state transition is committed before invoking external code.
+    // Cleanup may reenter, but it owns only detached old resources.
+    cleanup();
+    if (!active(c) || snapshot !== next) return;
+    if (resetReason) reset(resetReason, resetRange, c.generation);
+    if (!active(c)) return;
+    notify(next);
   }
   async function readContext(
     c: Context,
@@ -391,8 +425,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     end: number,
     root = false,
   ) {
-    if (current !== c || c.frozen || !c.session || !c.validator || expired(c))
-      return;
+    if (!active(c) || c.frozen || !c.session || !c.validator) return;
     let request: PretableRemoteRangeRequest;
     try {
       canonicalRemoteRoute(route);
@@ -416,6 +449,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     }
     const key = rangeAddress(route, start, end),
       owner = ownerFor(c, key);
+    if (!owns(c, key, owner)) return;
     c.requests.set(key, request);
     const response = await invoke(c, key, owner, "read", () =>
       provider.read(request, owner.signal),
@@ -423,7 +457,8 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     if (
       acceptRevocation(c, owner, response) ||
       !owns(c, key, owner) ||
-      expired(c)
+      expired(c) ||
+      !owns(c, key, owner)
     )
       return;
     c.owners.delete(key);
@@ -469,12 +504,18 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     reason: "query" | "refresh",
   ) {
     if (disposed) return;
-    generation++;
+    const startGeneration = ++generation;
+    const stillStarting = () => !disposed && generation === startGeneration;
     const oldQuery = lastQuery;
-    if (current) stop(current);
+    const previous = current;
     current = undefined;
-    reset(reason);
+    const cleanup = previous ? stop(previous) : () => {};
+    cleanup();
+    if (!stillStarting()) return;
+    reset(reason, undefined, startGeneration);
+    if (!stillStarting()) return;
     const prepared = prepareRemoteQuery(queryInput, provider.capabilities);
+    if (!stillStarting()) return;
     if (!prepared.ok) {
       // An invalid scope transition must not leave protected stale rows visible.
       let sameScope = false;
@@ -492,6 +533,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       } catch {
         /* Invalid/proxied input has no trusted scope identity. */
       }
+      if (!stillStarting()) return;
       if (!sameScope) purge();
       publish({
         state: visibleValidator && snapshot.view ? "stale" : "error",
@@ -502,6 +544,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       return;
     }
     const query = snapshotWire(queryInput);
+    if (!stillStarting()) return;
     lastQuery = query;
     if (
       oldQuery &&
@@ -510,7 +553,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     )
       purge();
     const c: Context = {
-      generation,
+      generation: startGeneration,
       query,
       queryKey: prepared.queryKey,
       owners: new Map(),
@@ -525,6 +568,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       generation,
       ...(visibleValidator && snapshot.view ? { view: snapshot.view } : {}),
     });
+    if (!active(c)) return;
     const owner = ownerFor(c, "open");
     const response = await invoke(c, "open", owner, "open", () =>
       provider.open(query, prepared.queryKey, owner.signal),
@@ -560,21 +604,23 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         : Promise.resolve(),
     async summary(scope: "filtered" | "all") {
       const c = current;
-      if (!c?.published || !c.session || !c.validator || c.frozen || expired(c))
-        return;
+      if (!c?.published || !c.session || !c.validator || c.frozen) return;
       if (provider.capabilities.summaries[scope] !== "same-version") {
+        if (expired(c)) return;
         handleError(c, { code: "unsupported-query" }, `summary:${scope}`);
         return;
       }
       const key = `summary:${scope}`,
         owner = ownerFor(c, key);
+      if (!owns(c, key, owner)) return;
       const response = await invoke(c, key, owner, "summary", () =>
         provider.summary(c.session!, scope, owner.signal),
       );
       if (
         acceptRevocation(c, owner, response) ||
         !owns(c, key, owner) ||
-        expired(c)
+        expired(c) ||
+        !owns(c, key, owner)
       )
         return;
       c.owners.delete(key);
@@ -647,12 +693,15 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       if (disposed) return;
       disposed = true;
       generation++;
-      if (current) stop(current);
+      const previous = current;
       current = undefined;
+      const cleanup = previous ? stop(previous) : () => {};
       lastQuery = undefined;
       purge();
+      const next = stage({ state: "disposed", generation });
+      cleanup();
       reset("dispose");
-      publish({ state: "disposed", generation });
+      notify(next);
       listeners.clear();
     },
   };

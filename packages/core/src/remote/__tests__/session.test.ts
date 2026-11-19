@@ -572,4 +572,250 @@ describe("remote session ownership", () => {
       "replacement",
     );
   });
+  it("does not resume an older start after reset synchronously selects a newer query", async () => {
+    const f = setup();
+    let next: Promise<void> | undefined;
+    const c = createRemoteSessionController(f.provider, {
+      rootRangeSize: 2,
+      onReset: (event) => {
+        if (event.generation === 1)
+          next = c.setQuery({ ...query, search: "B" });
+      },
+    });
+    const first = c.setQuery({ ...query, search: "A" });
+    expect(f.opens.map((p) => p.request.query.search)).toEqual(["B"]);
+    await f.open();
+    f.resolveRead(0);
+    await next;
+    await first;
+    expect(c.getSnapshot().view?.session.queryKey).toBe(
+      f.opens[0]!.request.queryKey,
+    );
+  });
+  it("cannot resurrect a controller disposed by its reset callback", async () => {
+    const f = setup();
+    const c = createRemoteSessionController(f.provider, {
+      onReset: (event) => {
+        if (event.reason === "query") c.dispose();
+      },
+    });
+    const first = c.setQuery(query);
+    expect(c.getSnapshot().state).toBe("disposed");
+    expect(f.opens).toHaveLength(0);
+    await first;
+  });
+  it.each(["abort", "release"] as const)(
+    "keeps a newer query started synchronously by %s cleanup",
+    async (boundary) => {
+      const f = setup();
+      await f.ready();
+      let next: Promise<void> | undefined;
+      let pending: Promise<void> | undefined;
+      const reenter = () => {
+        next = f.controller.setQuery({ ...query, search: "B" });
+      };
+      if (boundary === "abort") {
+        pending = f.controller.read([], 2, 4);
+        f.reads[1]!.signal.addEventListener("abort", reenter, { once: true });
+      } else {
+        let called = false;
+        f.provider.release = async () => {
+          if (!called) {
+            called = true;
+            reenter();
+          }
+        };
+      }
+      const older = f.controller.setQuery({ ...query, search: "A" });
+      expect(f.opens.slice(1).map((p) => p.request.query.search)).toEqual([
+        "B",
+      ]);
+      await f.open(1);
+      f.resolveRead(boundary === "abort" ? 2 : 1);
+      await next;
+      await older;
+      if (pending) {
+        f.resolveRead(1);
+        await pending;
+      }
+      expect(f.controller.getSnapshot().view?.session.queryKey).toBe(
+        f.opens[1]!.request.queryKey,
+      );
+    },
+  );
+  it("lets an abort-listener retry supersede the attempt that triggered its abort", async () => {
+    const f = setup();
+    await f.ready();
+    const first = f.controller.read([], 2, 4);
+    let latest: Promise<void> | undefined;
+    f.reads[1]!.signal.addEventListener(
+      "abort",
+      () => {
+        latest = f.controller.read([], 2, 4);
+      },
+      { once: true },
+    );
+    const middle = f.controller.read([], 2, 4);
+    expect(f.reads).toHaveLength(3);
+    f.resolveRead(2);
+    await latest;
+    await middle;
+    f.resolveRead(1);
+    await first;
+    expect(f.controller.getSnapshot().view?.ranges.map((r) => r.start)).toEqual(
+      [0, 2],
+    );
+  });
+  it("does not overwrite a refresh started by an error reset callback", async () => {
+    const f = setup();
+    let refresh: Promise<void> | undefined;
+    const c = createRemoteSessionController(f.provider, {
+      rootRangeSize: 2,
+      onReset: (event) => {
+        if (event.reason === "session-unauthorized") refresh = c.refresh();
+      },
+    });
+    const start = c.setQuery(query);
+    await f.open();
+    f.resolveRead(0);
+    await start;
+    const denied = c.read([], 2, 4);
+    f.reads[1]!.resolve({
+      ok: false,
+      error: { code: "unauthorized", scope: "session" },
+    });
+    await denied;
+    expect(c.getSnapshot().state).toBe("loading");
+    await f.open(1);
+    f.resolveRead(2);
+    await refresh;
+    expect(c.getSnapshot().state).toBe("ready");
+  });
+  it("does not continue range-denial handling after a subscriber disposes", async () => {
+    const f = setup();
+    await f.ready();
+    f.controller.subscribe(() => {
+      if (f.controller.getSnapshot().view?.ranges.length === 0)
+        f.controller.dispose();
+    });
+    const denied = f.controller.read([], 0, 1);
+    f.reads[1]!.resolve({
+      ok: false,
+      error: { code: "unauthorized", scope: "range" },
+    });
+    await denied;
+    expect(f.controller.getSnapshot().state).toBe("disposed");
+  });
+  it("does not dispatch after a loading subscriber replaces or disposes the controller", async () => {
+    for (const action of ["replace", "dispose"]) {
+      const f = setup();
+      let entered = false;
+      let next: Promise<void> | undefined;
+      f.controller.subscribe(() => {
+        if (entered) return;
+        entered = true;
+        if (action === "dispose") f.controller.dispose();
+        else next = f.controller.setQuery({ ...query, search: "B" });
+      });
+      const first = f.controller.setQuery(query);
+      if (action === "dispose") {
+        expect(f.opens).toHaveLength(0);
+        expect(f.controller.getSnapshot().state).toBe("disposed");
+      } else {
+        expect(f.opens.map((p) => p.request.query.search)).toEqual(["B"]);
+        await f.open();
+        f.resolveRead(0);
+        await next;
+      }
+      await first;
+    }
+  });
+  it.each(["expired", "consistency", "unauthorized"] as const)(
+    "preserves refresh started by release cleanup for %s",
+    async (code) => {
+      const f = setup();
+      await f.ready();
+      let refresh: Promise<void> | undefined;
+      let entered = false;
+      f.provider.release = async () => {
+        if (!entered) {
+          entered = true;
+          refresh = f.controller.refresh();
+        }
+      };
+      const pending = f.controller.read([], 2, 4);
+      f.reads[1]!.resolve({
+        ok: false,
+        error: code === "unauthorized" ? { code, scope: "session" } : { code },
+      });
+      await pending;
+      expect(f.controller.getSnapshot().state).toBe(
+        code === "expired" ? "stale" : "loading",
+      );
+      expect(f.controller.getSnapshot().error).toBeUndefined();
+      await f.open(1);
+      f.resolveRead(2);
+      await refresh;
+      expect(f.controller.getSnapshot().state).toBe("ready");
+    },
+  );
+  it("does not overwrite a query started by the retiring-view revocation reset", async () => {
+    const f = setup();
+    let latest: Promise<void> | undefined;
+    const c = createRemoteSessionController(f.provider, {
+      rootRangeSize: 2,
+      onReset: (event) => {
+        if (event.reason === "session-unauthorized")
+          latest = c.setQuery({ ...query, search: "C" });
+      },
+    });
+    const start = c.setQuery(query);
+    await f.open();
+    f.resolveRead(0);
+    await start;
+    const old = c.read([], 2, 4);
+    const replacement = c.setQuery({ ...query, search: "B" });
+    await f.open(1);
+    f.reads[1]!.resolve({
+      ok: false,
+      error: { code: "unauthorized", scope: "session" },
+    });
+    await old;
+    expect(f.opens[2]!.request.query.search).toBe("C");
+    expect(c.getSnapshot().state).toBe("loading");
+    await f.open(2);
+    f.resolveRead(3);
+    await latest;
+    f.resolveRead(2);
+    await replacement;
+    expect(c.getSnapshot().view?.session.queryKey).toBe(
+      f.opens[2]!.request.queryKey,
+    );
+  });
+  it("does not run an older range after the injected clock synchronously retries it", async () => {
+    const f = setup();
+    let trigger = false;
+    let retry: Promise<void> | undefined;
+    const c = createRemoteSessionController(f.provider, {
+      rootRangeSize: 2,
+      now: () => {
+        if (trigger) {
+          trigger = false;
+          retry = c.read([], 2, 4);
+        }
+        return 0;
+      },
+    });
+    const start = c.setQuery(query);
+    await f.open(0, { expiresAt: 10 });
+    f.resolveRead(0);
+    await start;
+    trigger = true;
+    const older = c.read([], 2, 4);
+    expect(f.reads).toHaveLength(2);
+    f.resolveRead(1);
+    await retry;
+    await older;
+    expect(c.getSnapshot().view?.ranges.map((r) => r.start)).toEqual([0, 2]);
+  });
 });
