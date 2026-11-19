@@ -183,7 +183,15 @@ cancellation, late authority, once-only abandoned-open cleanup and reentrant
 cleanup are covered. Controller independently reran all 215 remote tests and core
 typecheck successfully; build/lint/diff checks passed. See
 `status/remote-datasets/scheduler.md` for ownership and clock contracts.
-Task 7 is in progress.
+Task 7 complete through `38cea14e`: specification and quality reviews passed.
+Standalone cache admission now shares payload, ingress and metadata budgets across
+two generations, preserves protected topology/intent and supports atomic epoch-checked
+admission. Mixed optional/visible pressure diagnostics were corrected after review.
+All 235 remote tests passed; independent cache/sparse verification passed 27 tests.
+Core build/typecheck/lint passed. Controller composition remains Task 8; no complete
+controller memory or quiet-machine performance claim is made.
+
+Task 8 is in progress.
 
 ## Tasks
 
@@ -251,11 +259,11 @@ Task 7 is in progress.
 
 **Files:** Create `packages/core/src/remote/cache.ts`, `__tests__/cache.test.ts`; extend sparse-index tests and `packages/renderer-dom/src/__tests__/remote-layout.test.ts`.
 
-- [ ] **Step 1:** Write separate payload byte/entry, ingress reservation, branch-store, topology, expansion, selected-ID and measurement cap tests using oversized keys and payloads.
-- [ ] **Step 2:** Cover current plus retiring sessions sharing budgets, offscreen eviction, visible-set-too-large errors, failed admission without refetch loops and externally retained snapshots. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement atomic admission and global accounting, cold payload eviction and bounded measurement LRU. Preserve required topology across store eviction. Refuse new expansion/selection rather than silently discarding intent. Release the stale body if it blocks new-root admission. Distinguish estimated accounted size from observed heap and require provider response limits.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/cache.test.ts src/remote/__tests__/sparse-index.test.ts`. Expected: All documented cardinality/size budgets hold; eviction never changes record identity or expanded ranks. Re-estimation after measurement eviction corrects anchors within tested tolerance.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: bound remote cache and topology retention`.
+- [x] **Step 1:** Write separate payload byte/entry, ingress reservation, branch-store, topology, expansion, selected-ID and measurement cap tests using oversized keys and payloads.
+- [x] **Step 2:** Cover current plus retiring sessions sharing budgets, offscreen eviction, visible-set-too-large errors, failed admission without refetch loops and externally retained snapshots. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement atomic admission and global accounting, cold payload eviction and bounded measurement LRU. Preserve required topology across store eviction. Refuse new expansion/selection rather than silently discarding intent. Release the stale body if it blocks new-root admission. Distinguish estimated accounted size from observed heap and require provider response limits.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/cache.test.ts src/remote/__tests__/sparse-index.test.ts`. Expected: All documented cardinality/size budgets hold; eviction never changes record identity or expanded ranks. Re-estimation after measurement eviction corrects anchors within tested tolerance.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: bound remote cache and topology retention`.
 
 ### Task 8: Read model composition and summary provenance
 
