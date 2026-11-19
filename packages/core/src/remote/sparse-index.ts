@@ -150,7 +150,7 @@ export class SparseIndex {
       let lo = 0,
         hi = branch.expanded.length;
       while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
+        const mid = lo + Math.floor((hi - lo) / 2);
         if (branch.expanded[mid]!.start <= rank) lo = mid + 1;
         else hi = mid;
       }
@@ -180,7 +180,7 @@ export class SparseIndex {
     let lo = 0,
       hi = branch.expanded.length;
     while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
+      const mid = lo + Math.floor((hi - lo) / 2);
       if (branch.expanded[mid]!.ordinal < ordinal) lo = mid + 1;
       else hi = mid;
     }

@@ -92,7 +92,7 @@ export class RemoteMetrics {
     let lo = 0,
       hi = this.corrections.length;
     while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
+      const mid = lo + Math.floor((hi - lo) / 2);
       if (this.corrections[mid]!.rank < index) lo = mid + 1;
       else hi = mid;
     }
@@ -120,7 +120,7 @@ export class RemoteMetrics {
     let lo = 0,
       hi = this.rowCount;
     while (lo < hi) {
-      const mid = Math.floor((lo + hi) / 2);
+      const mid = lo + Math.floor((hi - lo) / 2);
       if (this.getOffsetForIndex(mid) <= offset) lo = mid + 1;
       else hi = mid;
     }

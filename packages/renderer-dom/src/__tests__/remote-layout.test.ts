@@ -129,3 +129,22 @@ it("resolves each retained measurement once for a viewport batch at the provisio
   expect(metrics.measurementCount).toBe(100000);
   expect(metrics.getTotalHeight()).toBe(2000100050);
 });
+
+it("terminates inverse lookup at safe-integer row-count boundaries without materialization", () => {
+  class GuardedMetrics extends RemoteMetrics {
+    probes = 0;
+    override getOffsetForIndex(index: number): number {
+      if (++this.probes > 54)
+        throw new Error("Binary search failed to converge");
+      return super.getOffsetForIndex(index);
+    }
+  }
+  const count = Number.MAX_SAFE_INTEGER;
+  const metrics = new GuardedMetrics(count, 1, 0, () => undefined);
+  for (const offset of [count - 3, count - 2, count - 1, count]) {
+    metrics.probes = 0;
+    expect(metrics.getIndexForOffset(offset)).toBe(offset);
+    expect(metrics.probes).toBeLessThanOrEqual(54);
+  }
+  expect(metrics.measurementCount).toBe(0);
+});
