@@ -52,7 +52,7 @@ See the current [core changelog](packages/core/CHANGELOG.md),
 [React API report](packages/react/react.api.md), and
 [committed comparative benchmark evidence](status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json).
 
-## Now — remote datasets research and design
+## Now — remote datasets implementation planning
 
 Design the missing remote-data orchestration around the existing external-data
 primitives. **Server-side grouping is required in the first release** (product
@@ -73,9 +73,12 @@ Preserve local-mode behavior and the existing server-supplied summary contract.
 Live subscriptions and revisioned writes are separate later slices; the initial
 remote design must leave compatible extension points without promising them.
 
-See the [research evidence](docs/research/2026-11-19-remote-datasets-research.md)
-and [draft design](docs/superpowers/specs/2026-11-19-remote-datasets-design.md).
-Research and design are active; implementation is not yet approved or shipped.
+See the [research evidence](docs/research/2026-11-19-remote-datasets-research.md),
+the [design approved for planning](docs/superpowers/specs/2026-11-19-remote-datasets-design.md),
+and the [implementation plan](docs/superpowers/plans/2026-11-19-remote-datasets.md).
+Existing application-managed windows remain supported; shared layout changes must
+preserve their coordinate, eviction, accessibility and interaction contracts.
+Implementation planning is complete; runtime implementation has not started.
 
 ## Next — saved views and local history
 

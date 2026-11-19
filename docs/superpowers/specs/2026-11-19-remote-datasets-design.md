@@ -1,9 +1,9 @@
 # Remote datasets with server-side grouping
 
 Date: 2026-11-19
-Status: draft — research-backed proposal, not approved for implementation
+Status: approved for implementation planning on 2026-11-19; API names and resource defaults remain provisional
 Baseline: `0.21.0` (`14f0430d32279f283dcfcb6f09662225548fe4fd`)
-Implementation plan: none; focused design decisions must be reviewed first
+Implementation plan: [remote datasets](../plans/2026-11-19-remote-datasets.md)
 Evidence: [research report](../../research/2026-11-19-remote-datasets-research.md)
 Product priority: [roadmap](../../../ROADMAP.md)
 
@@ -60,6 +60,88 @@ and editing clears when its row disappears.
 These are explicit contracts, not implementation accidents to bypass with fake
 rows or casts. The source evidence and current behavior are recorded in the
 [research report](../../research/2026-11-19-remote-datasets-research.md#pretable-baseline-reusable-behavior-and-incompatible-assumptions).
+
+## Relationship to windowing and compatibility boundaries
+
+The remote model extends the layout and interaction foundation of the
+[window design](2026-08-13-windowed-data-design.md), not the meaning of its public
+metadata. The [coordinate correction](2026-08-15-window-coordinates-design.md)
+and [eviction contract](2026-08-15-windowing-eviction-docs-design.md) remain
+compatibility requirements. Historical design status and defect notes must be
+checked against current code/tests rather than treated as current defects.
+
+| Boundary        | Existing manual window                                                  | Managed remote model                                                    |
+| --------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Address         | One contiguous flat span, `window.start + localIndex`                   | Group route and sibling ordinal mapped into expanded display rank       |
+| Fetch ownership | Application consumes `windowGap` and supplies rows                      | Controller consumes viewport demand and schedules branch ranges         |
+| Retention       | Application drops payload; grid retains supported identity/height state | Controller budgets payload, stores, topology, measurements and intent   |
+| Identity        | Application-owned `datasetKey`                                          | Query, acceptance generation and backend-enforced result token          |
+| Missing regions | Leading/trailing geometry, no placeholder record rows                   | Compressed intervals plus rendered viewport status slots                |
+| Counts          | Flat population positions only when existing honesty guards permit      | Exact expanded projection positions, separate from matching leaf totals |
+
+Both public modes remain supported; migration is optional. Manual mode keeps its
+props, telemetry, selection/eviction behavior, cursor examples and downgrade
+rules. It does not inherit remote range/count requirements. Remote mode rejects
+manual `resultMeta.window` and competing local data/model inputs; the controller
+owns its result metadata. It must not emit a manual `windowGap` fetch contract
+that starts a second request loop. Remote diagnostics are separately named.
+A transport cache adapter must not introduce a second independent retention owner.
+
+Reuse the variable-height measurement, stable-ID anchoring, column geometry and
+viewport machinery through a shared read adapter where tests demonstrate
+compatibility. Do not force multiple branch stores into one start offset or
+change the local snapshot union to include unavailable records. A flat remote
+query is the root-only case of the new model, and can retain disjoint ranges.
+
+The published scroll position and row positions must share the same global
+layout coordinate system. Convert to branch-relative or loaded-height offsets
+only at named internal boundaries. If extreme browser scroll extents require
+segmented physical scrolling, introduce an explicit DOM-to-logical mapping and
+keep published telemetry, reveal, hit testing and row positions coherent. Such a
+mapping must not change the existing manual window coordinate contract.
+
+Status slots are a deliberate remote-only extension to the original spacers-only
+rule. They are viewport status UI, never business records: no record renderers,
+checkboxes, selection, copy, CSV or aggregate inputs. Unrendered intervals remain
+pure geometry. Their screen-reader behavior is a release gate.
+
+Returning records reuse measurements while retained and valid for the current
+layout. Bounded measurement eviction or width/theme changes can require
+re-estimation and anchor correction; remote mode does not promise indefinitely
+pixel-exact returns. Do not weaken existing manual eviction guarantees while
+introducing this explicit remote policy. Restore focus only when its target is
+still valid and the reader has not moved elsewhere.
+
+### Required windowing regression matrix
+
+Run the existing suites unchanged before shared-layout edits, then retain them
+as gates alongside new paired local/manual/remote cases:
+
+- `packages/layout-core/src/__tests__/viewport-window.test.ts`,
+  `window-bottom-edge.test.ts`, and `eviction-anchor.test.ts`: spacer geometry,
+  boundary consistency and anchoring across release/return.
+- `packages/renderer-dom/src/__tests__/window-spacer-coordinates.test.ts`,
+  `window-spacer-height.test.ts`, and `window-spacer-refresh.test.ts`: nonzero
+  offsets, global clamping and current-plan boundaries after metadata changes.
+- `packages/react/src/__tests__/windowed-scroll-coordinates.test.tsx`,
+  `eviction-selection-surface.test.tsx`, `eviction-population-change.test.tsx`,
+  and `eviction-gate-blip.test.tsx`: selection/focus retention, dataset resets,
+  and transient metadata handling.
+- `apps/bench/tests/windowed-data.spec.ts` and `eviction.spec.ts`: actual viewport
+  intersection at offset zero and nonzero offsets, real pointer clicks,
+  visible-row telemetry, scroll/reveal and return anchoring. DOM visibility alone
+  is insufficient evidence.
+- `apps/website/e2e/server-data.spec.ts`: existing manual window and cursor flows
+  remain usable, including no duplicate fetch orchestration.
+
+New tests must cover manual ARIA downgrade guards (grouping, non-external
+processing, non-exact/out-of-range totals), the existing `windowGap` boundary
+behavior, and unchanged local/manual copy, CSV and editing. Remote cases add
+multiple disjoint branches, flat root-only ranges, collapse during reads,
+status-slot exclusion, measurement-cap eviction, and simultaneous grid instances
+using different modes. Type/runtime cases reject mixed inputs; provider call
+counts prove only one scheduler owns fetching. Never rewrite a legacy expectation
+merely to accommodate a remote abstraction.
 
 ## Approaches considered
 
@@ -640,12 +722,13 @@ not silently approve implementing them or building a hosted backend.
 
 Remaining review and evidence gates:
 
-- Review the remaining recommended copy/export, loading-slot, and API contracts.
+- Verify copy/export and loading-slot behavior against this design, and review
+  exact public API names and types during implementation.
 - Validate provider feasibility with a coherent revision-fence reference adapter
   and an immutable-result fixture; no browser-held indefinite DB transactions.
 - Measure resource defaults and accessibility behavior in implementation spikes;
   these are evidence gates, not unresolved user scope or claims of current results.
 
-This draft records confirmed scope and recommended contracts for review. It is
-not approval to ship the proposed
-API or a promise that these unmeasured limits already hold.
+The user authorized implementation planning with the windowing compatibility
+requirements above. Release remains subject to the specified API, correctness,
+accessibility and measured performance gates.
