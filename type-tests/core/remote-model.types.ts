@@ -64,3 +64,12 @@ const invalidSummaryCapability: typeof provider.capabilities.summaries = {
   all: "latest",
 };
 void [summaryCapability, invalidSummaryCapability];
+
+if (slot?.kind === "unloaded" || slot?.kind === "loading") {
+  const ordinal: number = slot.ordinal;
+  // @ts-expect-error unavailable slots are not records
+  slot.row;
+  // @ts-expect-error unavailable slots have no selectable record identity
+  slot.id;
+  void ordinal;
+}

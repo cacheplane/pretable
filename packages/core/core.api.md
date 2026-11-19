@@ -1232,7 +1232,6 @@ export interface PretableRemoteRangeRequest extends PretableRemoteSession {
 
 // @public
 export interface PretableRemoteReadHandle<TRow extends object> {
-    // (undocumented)
     getSlot(index: number): PretableRemoteSlot<TRow> | undefined;
     // (undocumented)
     getStatus(): PretableRemoteStatus;
@@ -1289,6 +1288,10 @@ export interface PretableRemoteSignal {
 export type PretableRemoteSlot<TRow extends object> = {
     readonly kind: "loaded";
     readonly node: PretableRemoteNode<TRow>;
+} | {
+    readonly kind: "unloaded";
+    readonly route: PretableRemoteRoute;
+    readonly ordinal: number;
 } | {
     readonly kind: "loading";
     readonly route: PretableRemoteRoute;

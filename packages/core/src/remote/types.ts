@@ -203,6 +203,11 @@ export interface PretableRemoteProvider<TRow extends object, TColumns> {
 export type PretableRemoteSlot<TRow extends object> =
   | { readonly kind: "loaded"; readonly node: PretableRemoteNode<TRow> }
   | {
+      readonly kind: "unloaded";
+      readonly route: PretableRemoteRoute;
+      readonly ordinal: number;
+    }
+  | {
       readonly kind: "loading";
       readonly route: PretableRemoteRoute;
       readonly ordinal: number;
@@ -224,6 +229,7 @@ export type PretableRemoteStatus =
 /** Minimal read-only observation contract; controller commands will be defined with their implementation. @public */
 export interface PretableRemoteReadHandle<TRow extends object> {
   getStatus(): PretableRemoteStatus;
+  /** Undefined means no valid slot at this index; an unloaded valid slot is explicit. */
   getSlot(index: number): PretableRemoteSlot<TRow> | undefined;
   subscribe(listener: () => void): () => void;
 }
