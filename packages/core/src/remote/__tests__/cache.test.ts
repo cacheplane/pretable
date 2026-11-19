@@ -60,6 +60,58 @@ describe("RemoteCache admission owner", () => {
       cache.prepare({ records: [record("large", { bytes: 21 })] }),
     ).toEqual({ ok: false, reason: "payload-capacity" });
   });
+  it("reports ordinary capacity when a mixed batch exceeds budget but its protected minimum fits", () => {
+    for (const limits of [
+      { payloadEntries: 1 },
+      { payloadBytes: 10 },
+      { metadataBytes: 350 },
+    ]) {
+      const cache = cacheWith(limits);
+      const before = cache.snapshot();
+      const result = cache.prepare({
+        records: [
+          record("visible", { protected: true }),
+          record("prefetch", { tier: "prefetch" }),
+        ],
+      });
+      expect(result).toEqual({
+        ok: false,
+        reason:
+          "metadataBytes" in limits ? "metadata-capacity" : "payload-capacity",
+      });
+      expect(cache.snapshot()).toEqual(before);
+      expect(cache.get(1, "visible")).toBeUndefined();
+      expect(cache.get(1, "prefetch")).toBeUndefined();
+      admit(cache, [record("visible", { protected: true })]);
+    }
+  });
+  it("includes retained protected rows and required intent when diagnosing the protected minimum", () => {
+    const cache = cacheWith({ payloadEntries: 1, expansions: 1 });
+    admit(cache, [
+      record("old", { protected: true }),
+      record("intent", { kind: "expansion" }),
+    ]);
+    const before = cache.snapshot();
+    expect(
+      cache.prepare({
+        records: [
+          record("visible", { protected: true }),
+          record("prefetch", { tier: "prefetch" }),
+        ],
+      }),
+    ).toEqual({ ok: false, reason: "minimum-visible-too-large" });
+    expect(cache.snapshot()).toEqual(before);
+    expect(cache.get(1, "intent")).toBe("intent");
+    expect(
+      cache.prepare({
+        records: [
+          record("visible", { protected: true }),
+          record("intent2", { kind: "expansion" }),
+        ],
+      }),
+    ).toEqual({ ok: false, reason: "intent-capacity" });
+    expect(cache.snapshot()).toEqual(before);
+  });
   it("drops prefetch then overscan before cold payloads and preserves protected focus", () => {
     const cache = cacheWith({ payloadEntries: 4 });
     admit(cache, [

@@ -122,7 +122,10 @@ idempotent and reports whether capacity changed; Task 8 should then wake blocked
 admission/dispatch once. It must add the scheduler admission/wake hook rather
 than turn refusal into repeated provider invocations or a busy loop.
 
-A protected candidate that cannot fit returns `minimum-visible-too-large`.
+A protected minimum that cannot fit alongside required topology/intent returns
+`minimum-visible-too-large`. Optional incoming prefetch/overscan does not cause
+that diagnostic when the required protected set fits. Mixed batches still fail
+atomically with ordinary capacity refusal; no records are silently dropped.
 Other refusals distinguish payload, metadata, intent, invalid cost, stale plan,
 and unknown scope. Diagnostics/snapshots contain only counts, epochs, and reasons,
 never protected IDs/keys. No refusal stores a candidate/request history, enqueues
@@ -149,7 +152,7 @@ scheduled cost gates remain Task 9.
 Verified on Node 24.20.0 / pnpm 10.12.1:
 
 - `pnpm --filter @pretable/core test src/remote/__tests__ --maxWorkers=1`:
-  233 tests passed across seven files (25 cache/sparse tests).
+  235 tests passed across seven files (27 cache/sparse tests).
 - `pnpm --filter @pretable/core typecheck`: passed.
 - `pnpm --filter @pretable/core build`: passed.
 - `pnpm --filter @pretable/core lint`: passed.

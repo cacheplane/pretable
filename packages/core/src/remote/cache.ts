@@ -352,12 +352,12 @@ export class RemoteCache {
         count.cellRanges > this.limits.cellRanges
       )
         return failure("intent-capacity");
-      const excess = () =>
-        count.payloadEntries > this.limits.payloadEntries ||
-        count.payloadBytes > this.limits.payloadBytes ||
-        count.metadataBytes > this.limits.metadataBytes ||
-        count.stores > this.limits.stores ||
-        count.measurements > this.limits.measurements;
+      const excess = (usage = count) =>
+        usage.payloadEntries > this.limits.payloadEntries ||
+        usage.payloadBytes > this.limits.payloadBytes ||
+        usage.metadataBytes > this.limits.metadataBytes ||
+        usage.stores > this.limits.stores ||
+        usage.measurements > this.limits.measurements;
       const priority = (r: Retained) =>
         r.record.tier === "prefetch" ? 0 : r.record.tier === "overscan" ? 1 : 2;
       const candidates = [...records]
@@ -393,7 +393,20 @@ export class RemoteCache {
         remove(key);
       }
       if (excess()) {
-        if ([...added].some((key) => records.get(key)?.record.protected))
+        // The atomic batch may contain optional incoming prefetch/overscan.
+        // Diagnose the protected minimum without those evictable records, but
+        // never pretend that required topology or user intent can be dropped.
+        const required = new Map(
+          [...records].filter(
+            ([, retained]) =>
+              retained.record.protected ||
+              intentKinds.has(retained.record.kind),
+          ),
+        );
+        if (
+          [...added].some((key) => records.get(key)?.record.protected) &&
+          excess(this.count(required, scopes.size))
+        )
           return failure("minimum-visible-too-large");
         return failure(
           count.metadataBytes > this.limits.metadataBytes
