@@ -201,7 +201,16 @@ Fresh independent verification passed all 302 core tests, typecheck and lint;
 Original windowing runtime remains unchanged. Layout/browser/performance release
 gates remain open; this is not a completed remote grid release.
 
-Task 9 is in progress.
+Task 9 functional integration complete through `f4c877e8`, with fresh website
+verification in `c54453d8`. Specification and quality reviews passed this slice.
+Independent verification passed layout 163, renderer 201 and core 303 tests;
+23 React compatibility, 10 original Chromium window/eviction browser and all 16
+website production Chromium/WebKit server-data checks passed. Original local
+diff remains preserved. The integrated performance gate FAILED at valid default
+limits (expansion p95 34.773 ms); this is not a passed Tasks 5–9 checkpoint.
+Measurement/projection/viewport budget wiring remains an explicit Task 10 gate.
+
+Mandatory Task 9b is in progress; Task 10 must not start until it passes.
 
 ## Tasks
 
@@ -289,11 +298,23 @@ Task 9 is in progress.
 
 **Files:** Create `packages/layout-core/src/read-layout.ts`; modify `packages/layout-core/src/index.ts`, `viewport-plan.ts` and `packages/renderer-dom/src/row-layout-controller.ts` only as required; extend `remote-layout.ts` and its tests.
 
-- [ ] **Step 1:** Write paired local/manual/remote read-adapter tests for equal materialized rows, then sparse branches, nonzero offsets, width/theme changes, measurement retention and far reveal.
-- [ ] **Step 2:** Assert published scrollTop and row top share coordinates, correct viewport intersection, clamping, hit testing and telemetry. Cover metadata-only updates using one committed geometry snapshot. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Introduce a structural read seam that preserves existing local fast paths and window spacers. Route remote ranges through the sparse layout mapping validated in Task 4. Reuse anchor/measurement primitives where proven; do not make the local model understand remote loading states.
-- [ ] **Step 4:** Run `pnpm --filter @pretable-internal/layout-core test && pnpm --filter @pretable-internal/renderer-dom test`. Expected: All original window/eviction tests pass unchanged, alongside remote tests; no arbitrary coordinate arithmetic is duplicated in React.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `refactor: share layout reads with remote projection`.
+- [x] **Step 1:** Write paired local/manual/remote read-adapter tests for equal materialized rows, then sparse branches, nonzero offsets, width/theme changes, measurement retention and far reveal.
+- [x] **Step 2:** Assert published scrollTop and row top share coordinates, correct viewport intersection, clamping, hit testing and telemetry. Cover metadata-only updates using one committed geometry snapshot. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Introduce a structural read seam that preserves existing local fast paths and window spacers. Route remote ranges through the sparse layout mapping validated in Task 4. Reuse anchor/measurement primitives where proven; do not make the local model understand remote loading states.
+- [x] **Step 4:** Run `pnpm --filter @pretable-internal/layout-core test && pnpm --filter @pretable-internal/renderer-dom test`. Expected: All original window/eviction tests pass unchanged, alongside remote tests; no arbitrary coordinate arithmetic is duplicated in React.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `refactor: share layout reads with remote projection`.
+
+### Task 9b: Bound integrated remote publication work before React
+
+**Required checkpoint:** Task 9 diagnostic evidence found synchronous expansion at approximately 25–40 ms in a valid default-budget state (5,000 resident groups, 5,001 topology nodes, 1,808 expansions, 8,388,024 metadata bytes). Isolated suboperations below 8 ms do not satisfy the integrated processing gate. This task must pass before Task 10; the Tasks 5–9 checkpoint remains open until then.
+
+**Files:** Refine `packages/core/src/remote/{cache,model-retention,model-view,create-remote-model,sparse-index,validate-response,session}.ts` only as needed; add focused work-budget/lifecycle tests; extend `scripts/probe-remote-publication-performance.mjs` and status evidence.
+
+- [ ] **Step 1:** Reproduce the integrated default-budget failure with actual public-model counters, not an impossible combination of independent maximum limits. Separate provider latency, synchronous processing turns and total fill latency. Preserve the original threshold and fixture evidence.
+- [ ] **Step 2:** Add deterministic work-bound and atomic-publication regressions for expansion/collapse, response admission, metadata-only changes, supersession, source/auth replacement and disposal during preparation. Test temporary reservations and failed admission without retained historical candidates. Observe relevant failures before implementation.
+- [ ] **Step 3:** Remove redundant whole-state preparation/publication and use incremental/persistent structures or bounded cooperative preparation where needed. Reuse only immutable compatible state. Preserve immediate collapse semantics, exact accepted projection, stable IDs, shared memory budgets, bootstrap ownership, pending-demand replay and server-summary provenance. Do not introduce a render-time fetch or weaken consistency to meet timing.
+- [ ] **Step 4:** Run all core remote and affected layout/renderer regressions, public type/API checks, and the integrated quiet-host probe at supported default residency. Preserve the existing gate semantics in `scripts/bench-row-model-gate.mjs`: commit p95 at most 8 ms and maximum scheduled rebuild slice at most 8 ms, plus the measured-cadence frame/correctness checks when browser integration is present. Report end-to-end latency separately. Explicitly distinguish custom raised-limit workloads and unavailable quiet-host evidence.
+- [ ] **Step 5:** Complete separate specification and quality reviews; commit as `perf: bound integrated remote publication work`. Do not proceed to React integration while this gate is known to fail.
 
 ### Task 10: React remote ownership and read-only surface
 
@@ -301,7 +322,7 @@ Task 9 is in progress.
 
 - [ ] **Step 1:** Write remote input rendering and type cases, including rows/local model/manual window conflicts. Instrument every editor predicate/renderer/parser/validator/setter to throw if invoked.
 - [ ] **Step 2:** Test external headless ownership versus React-created ownership, StrictMode mount/unmount, simultaneous manual and remote grids, source/auth change and no render-time requests. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Bind immutable reads and viewport demand outside render. Reject write callbacks and mixed inputs before rendering. Keep shared editor-configured columns inert. Preserve drop-in viewport ownership; explicitly review whether the existing drop-in accepts a managed model and add its inference cases without exposing manual telemetry it does not own. No second windowGap fetch loop.
+- [ ] **Step 3:** Wire the Task 9 transactional measurement and resident-rank projection admission seams to the remote model's authoritative metadata budget; reserve viewport/status buffers before allocation and test shared accounting, denial/eviction, source replacement, disposal and StrictMode ownership. A second independent measurement cache does not satisfy global retention limits. Bind immutable reads and viewport demand outside render. Reject write callbacks and mixed inputs before rendering. Keep shared editor-configured columns inert. Preserve drop-in viewport ownership; explicitly review whether the existing drop-in accepts a managed model and add its inference cases without exposing manual telemetry it does not own. No second windowGap fetch loop.
 - [ ] **Step 4:** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/remote-surface.test.tsx src/__tests__/remote-window-compatibility.test.tsx`. Expected: Provider call counts show one request owner; edit callbacks remain untouched; local/manual editing and inference pass. Run pnpm typecheck:public after adding the React overload.
 - [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: integrate read-only remote grid surface`.
 
@@ -380,7 +401,7 @@ Task 9 is in progress.
 - After Tasks 1–4: review API and provider/layout feasibility evidence before
   shared layout integration. If the approach cannot satisfy variable heights,
   exact projection or versioned export, revise the technical design explicitly.
-- After Tasks 5–9: headless correctness and unchanged legacy layout are required.
+- After Tasks 5–9 and mandatory Task 9b: headless correctness, unchanged legacy layout and the integrated 8 ms processing gate are required before React integration.
 - After Tasks 10–14: review the working grouped browsing and complete export UX.
 - After Tasks 15–17: review release evidence; implementation is not complete while
   any required compatibility, screen-reader, performance or export gate is open.
