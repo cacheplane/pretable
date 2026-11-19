@@ -196,11 +196,11 @@ describe("headless remote read model", () => {
     f.model.dispose();
   });
   it("holds ingress after cancelled ignored-abort transport and releases late opens on disposal", async () => {
-    const f = setup({ limits: { responseBytes: 1024, ingressBytes: 1024 } });
+    const f = setup({ limits: { responseBytes: 1024, ingressBytes: 2048 } });
     const a = f.model.setQuery(query);
     const b = f.model.setQuery({ ...query, search: "next" });
     expect(f.opens).toHaveLength(1);
-    expect(f.model.getDiagnostics().ingressBytes).toBe(1024);
+    expect(f.model.getDiagnostics().ingressBytes).toBe(2048);
     await f.open(0);
     await a;
     await tick();
@@ -911,4 +911,31 @@ it("lets accepted newer viewport demand supersede queued loading intent", async 
   await f.read(1);
   expect(f.model.readSlot(4)?.kind).toBe("unloaded");
   f.model.dispose();
+});
+
+it("refuses ingress that cannot hold a raw response and the serialized owned-copy stage", async () => {
+  const f = setup({ limits: { responseBytes: 1024, ingressBytes: 1024 } });
+  const pending = f.model.setQuery(query);
+  await tick();
+  const opens = f.opens.length;
+  const diagnostic = f.model.getDiagnostics();
+  f.model.dispose();
+  await pending;
+  expect(opens).toBe(0);
+  expect(diagnostic.capacity).toBe("minimum-visible-too-large");
+  expect(diagnostic.ingressBytes).toBe(0);
+});
+it("reserves one owned-copy stage before dispatch so physical responses cannot consume its credit", async () => {
+  const f = setup({ limits: { responseBytes: 4096, ingressBytes: 16384 } });
+  await f.ready(query, 10);
+  const pending = f.model.demandViewport({ start: 0, end: 10 });
+  await tick();
+  const active = f.model.getDiagnostics().active;
+  const ingress = f.model.getDiagnostics().ingressBytes;
+  f.model.dispose();
+  for (let i = 1; i < f.reads.length; i++) await f.read(i);
+  await pending;
+  expect(active).toBe(3);
+  expect(ingress).toBe(16384);
+  expect(f.model.getDiagnostics().ingressBytes).toBe(0);
 });

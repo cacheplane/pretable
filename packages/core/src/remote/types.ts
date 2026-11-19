@@ -186,7 +186,10 @@ export interface PretableRemoteSummary {
  * string, boolean, null, undefined and finite number values. Classes, accessors,
  * symbols and executable values require application transport encoding.
  * Client evidence is retained with cached ranges; forgotten overlaps remain the
- * provider's consistency obligation. @public */
+ * provider's consistency obligation.
+ * Success values transfer immutable read ownership on delivery: providers must
+ * not mutate returned objects afterwards. The model may snapshot them across
+ * preparation tasks before publishing its own frozen copy. @public */
 export interface PretableRemoteProvider<TRow extends object, TColumns> {
   readonly capabilities: PretableRemoteCapabilities;
   open(

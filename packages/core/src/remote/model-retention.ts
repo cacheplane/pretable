@@ -1,3 +1,8 @@
+import {
+  createRetentionPlan,
+  type RetainedGeometry,
+  type RetentionCandidate,
+} from "./retention-plan";
 import { RemoteCache, type CacheRecord, type CacheFailure } from "./cache";
 import { canonicalRemoteRoute, remoteGroupId } from "./query";
 import { rangeAddress } from "./validate-response";
@@ -33,14 +38,37 @@ export class ModelRetention<TRow extends object> {
   capacity: CacheFailure | undefined;
   private scopes = new Set<number>();
   private residentGroups = new Set<string>();
-  private geometry:
-    | {
-        rootCount: number;
-        groups: Map<string, ModelGroup>;
-        expanded: Set<string>;
-        index: SparseIndex;
-      }
-    | undefined;
+  private geometry: RetainedGeometry | undefined;
+  private pendingPlan: ReturnType<typeof createRetentionPlan<TRow>> | undefined;
+  private invalidateCandidate() {
+    this.pendingPlan?.discard();
+    this.pendingPlan = undefined;
+  }
+  private plan(state: RetentionCandidate<TRow>) {
+    const plan = createRetentionPlan(
+      this.cache,
+      state,
+      (candidate) => {
+        if (candidate.records) this.records = candidate.records;
+        else {
+          for (const r of candidate.drops ?? [])
+            this.records.delete(this.id(r));
+          for (const r of candidate.additions ?? [])
+            this.records.set(this.id(r), r);
+        }
+        this.groups = candidate.groups;
+        this.residentGroups = candidate.residentGroups;
+        this.expanded = candidate.expanded;
+        this.visible = candidate.visible;
+        this.geometry = candidate.geometry;
+        for (const scope of candidate.releaseScopes) this.scopes.delete(scope);
+        if (this.pendingPlan === plan) this.pendingPlan = undefined;
+      },
+      (rootCount, groups, expanded) => this.index(rootCount, groups, expanded),
+    );
+    this.pendingPlan = plan;
+    return plan;
+  }
   constructor(readonly options: PretableRemoteModelOptions) {
     this.cache = new RemoteCache(options.limits);
   }
@@ -48,6 +76,7 @@ export class ModelRetention<TRow extends object> {
     return JSON.stringify([record.scope, record.key]);
   }
   begin(generation: number) {
+    this.invalidateCandidate();
     for (const scope of [...this.scopes])
       if (scope !== this.visible) this.close(scope);
     this.current = generation;
@@ -59,6 +88,7 @@ export class ModelRetention<TRow extends object> {
     return true;
   }
   close(scope: number) {
+    this.invalidateCandidate();
     this.cache.closeScope(scope);
     this.scopes.delete(scope);
     for (const [key, record] of this.records)
@@ -74,6 +104,7 @@ export class ModelRetention<TRow extends object> {
     for (const scope of [...this.scopes]) this.close(scope);
   }
   clearIntent() {
+    this.invalidateCandidate();
     this.expanded = new Set();
     this.geometry = undefined;
     for (const [key, record] of this.records)
@@ -83,6 +114,7 @@ export class ModelRetention<TRow extends object> {
       }
   }
   dropGlobal(key: string) {
+    this.invalidateCandidate();
     this.cache.drop(-1, key);
     this.records.delete(this.id({ scope: -1, key }));
   }
@@ -99,6 +131,7 @@ export class ModelRetention<TRow extends object> {
     expanded?: Set<string>;
     protectedRanges?: ReadonlySet<string>;
   }) {
+    this.invalidateCandidate();
     const expectedEpoch = input.expectedEpoch ?? this.cache.snapshot().epoch;
     if (expectedEpoch !== this.cache.snapshot().epoch) {
       this.capacity = "stale-plan";
@@ -135,35 +168,19 @@ export class ModelRetention<TRow extends object> {
         if (prepared.plan.evictions.every((r) => changed.has(this.id(r)))) {
           const groups = this.groups,
             expanded = input.expanded ?? this.expanded;
-          let geometry =
-            this.geometry?.expanded === expanded ? this.geometry : undefined;
-          return {
+          return this.plan({
+            cachePlan: prepared.plan,
             groups,
-            evictions: [] as PretableRemoteRange<TRow>[],
-            index: (rootCount: number) => {
-              const index = this.index(rootCount, groups, expanded);
-              geometry = { rootCount, groups, expanded, index };
-              return index;
-            },
-            discard: () => {
-              geometry = undefined;
-              this.cache.discard(prepared.plan);
-            },
-            commit: () => {
-              if (!this.cache.commit(prepared.plan)) {
-                geometry = undefined;
-                return false;
-              }
-              for (const r of input.drops ?? [])
-                this.records.delete(this.id(r));
-              for (const r of input.additions ?? [])
-                this.records.set(this.id(r), r);
-              this.expanded = expanded;
-              this.geometry = geometry;
-              geometry = undefined;
-              return true;
-            },
-          };
+            residentGroups: this.residentGroups,
+            expanded,
+            visible: this.visible,
+            releaseScopes: [],
+            evictions: [],
+            additions: input.additions,
+            drops: input.drops,
+            geometry:
+              this.geometry?.expanded === expanded ? this.geometry : undefined,
+          });
         }
         this.cache.discard(prepared.plan);
       }
@@ -320,35 +337,16 @@ export class ModelRetention<TRow extends object> {
               (!retained.has(this.id(r)) || incoming.has(this.id(r))),
           )
           .map((r) => r.value as PretableRemoteRange<TRow>);
-        let geometry: typeof this.geometry;
-        return {
-          index: (rootCount: number) => {
-            const index = this.index(rootCount, groups, expanded);
-            geometry = { rootCount, groups, expanded, index };
-            return index;
-          },
-          evictions,
+        return this.plan({
+          cachePlan: prepared.plan,
+          records: retained,
           groups,
-          discard: () => {
-            geometry = undefined;
-            this.cache.discard(prepared.plan);
-          },
-          commit: () => {
-            if (!this.cache.commit(prepared.plan)) {
-              geometry = undefined;
-              return false;
-            }
-            this.records = retained;
-            this.groups = groups;
-            this.residentGroups = residentGroups;
-            this.geometry = geometry;
-            geometry = undefined;
-            this.expanded = expanded;
-            this.visible = visible;
-            for (const scope of releaseScopes) this.scopes.delete(scope);
-            return true;
-          },
-        };
+          residentGroups,
+          expanded,
+          visible,
+          releaseScopes,
+          evictions,
+        });
       }
       if (
         prepared.reason === "stale-plan" ||
@@ -397,8 +395,8 @@ export class ModelRetention<TRow extends object> {
       entries: value.entries.length,
       bytes: bytes * 2,
       metadataBytes:
-        128 +
-        256 * value.entries.length +
+        192 +
+        264 * value.entries.length +
         wireBytes(value.route) +
         16 * addressKey(value).length,
       address: {

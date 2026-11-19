@@ -1,12 +1,12 @@
-# Task 9b: integrated publication processing budget
+# Task 9 b: integrated publication processing budget
 
 Status: intermediate synchronous optimization; **the complete 8 ms gate remains failing**.
 
 The original diagnostic and `layout-publication-performance.json` are preserved.
 `publication-before.json` reproduces 5000 resident group payloads, 5001 topology
 nodes and 1808 accepted expansions under the default shared limits. Metadata is
-8,388,024 bytes; payload is 3,721,128 bytes. Near-cap expansion p95 was 26.50 ms,
-collapse/expand p95 27.09 ms. Host load was 5.80 on the 10-core host; this is not
+8,388,024 bytes; payload is 3,721,128 bytes. Near-cap expansion p 95 was 26.50 ms,
+collapse/expand p 95 27.09 ms. Host load was 5.80 on the 10-core host; this is not
 quiet-host certification.
 
 ## Reproduction
@@ -45,7 +45,7 @@ and only newly admitted topology submission for a new range.
 
 `publication-sync-1000.json` and `publication-sync-100.json` retain the complete
 counter and timing evidence. Earlier post-optimization runs measured expansion
-p95 5.33 ms / toggle p95 5.39 ms at unchanged 1808 expansions. The default100
+p 95 5.33 ms / toggle p 95 5.39 ms at unchanged 1808 expansions. The default 100
 fixture admits 1750 expansions because 50 retained range/request descriptors cost
 more than five large blocks, with 5000 payloads and 5001 topology nodes unchanged.
 The group-membership set replaces the copied snapshot group-map ownership within
@@ -57,19 +57,65 @@ cross-turn staging lifetime before this task can claim boundedness.
 
 ## Outstanding failure
 
-Supported1000 synchronous demand entry is 38.20 ms, fill callback maximum52.11 ms.
-Default100 synchronous demand entry is36.46 ms, fill callback maximum41.47 ms.
-Both exceed8 ms. These results motivate incremental evidence and cooperative
+Supported 1000 synchronous demand entry is 38.20 ms, fill callback maximum 52.11 ms.
+Default 100 synchronous demand entry is 36.46 ms, fill callback maximum 41.47 ms.
+Both exceed 8 ms. These results motivate incremental evidence and cooperative
 acceptance/demand preparation. They cannot be waived by expansion improvements.
 Quiet-host final timing, real browser cadence, and staged-preparation cancellation
 and budget tests remain pending. React integration is not implemented here.
 
 ## Checkpoint verification
 
-Node24.20.0 / pnpm10.12.1 checkpoint checks:
+Node 24.20.0 / pnpm 10.12.1 checkpoint checks:
 
-- Core:309 tests across14files; typecheck, lint, build and api:check passed.
-- Layout:163 tests across9files; renderer:201 tests across12files passed.
-- Both public consumer TypeScript projects passed; forgotten-export checks5/5.
+- Core:309 tests across 14 files; typecheck, lint, build and api:check passed.
+- Layout:163 tests across 9 files; renderer:201 tests across 12 files passed.
+- Both public consumer TypeScript projects passed; forgotten-export checks 5/5.
 - Renderer emitted the existing Vite native-config warning about `__dirname`.
 - `git diff --check` passed. No public API changes.
+
+## Cooperative validation checkpoint (incomplete)
+
+The second checkpoint removes per-response reconstruction of node/address/ID maps.
+Each retained range now owns a sorted `Uint 32 Array` of sibling offsets; comparisons
+read typed identities from the same immutable nodes. Signed zero, numeric/string
+IDs and group/leaf namespaces remain distinct. Overlaps use direct sibling offsets;
+paired eviction removes the compact index. Accepted-session topology lookup shares
+the immutable group map rather than closing over mutable current state.
+
+The added accounting is 8 bytes per retained entry plus 64 bytes per range:4 bytes
+for retained offsets,4 bytes for a replacement/sort allowance, and a bounded block
+index header. At 5000 rows/five blocks the added charge is 40,320 bytes. Before adding
+cooperative scheduling, a diagnostic run kept 5000 payloads/5001 topology nodes at
+7,196,936 metadata bytes before expansion. Final near-cap counters will be remeasured
+for the composed implementation. Demand planning now advances by block and sibling
+span boundaries, including child expansions, rather than enumerating every rank.
+
+A reusable owned-copy reservation of `responseBytes` is acquired **before** any raw
+transport reservation. With defaults,32 MiB ingress holds three 8 MiB raw reservations
+and one 8 MiB owned-copy reservation. Four physical requests remain the scheduler's
+ceiling; available shared ingress may reduce concurrency. A configuration that cannot
+hold one raw response plus the stage fails explicitly. The old 1024/1024 fixture was
+corrected to 1024/2048 and still verifies ignored-abort ownership through settlement;
+new tests verify impossible capacity and default headroom ownership. The stage lease
+is released once no physical/acceptance owner needs it; disposal first cancels the
+builder, then releases its stage while raw ignored-abort leases remain until settlement.
+
+A four-owner maximum success queue serializes owned copies across generations.
+Authorization/error handling bypasses the success queue. Queued cancellation drops
+its callback promptly. Range snapshot/validation now uses actual timer-task slices
+of at most 1024 property/validation steps. This is a work bound, not final 8 ms timing
+certification. Public tests verify that a 1000-row response remains unpublished during
+preparation, disposal clears its continuation and all settled ingress, and source
+objects changed during suspended property traversal are rejected. Providers must not
+mutate delivered success values; caller-owned objects are not frozen or edited.
+The synchronous user sizing hook is explicitly non-preemptible and must finish within
+the processing budget. Retention candidates now keep their maps in a clearable state
+cell: discard immediately revokes geometry authority and releases candidate references.
+
+**Still incomplete:** retention/index/view preparation slices, cooperative summary
+validation, acceptance-deadline checks, metadata-near-cap ingress refusal, safe candidate
+rebase on bookkeeping changes, and phase-tagged final benchmarks. Cross-turn geometry
+workspace accounting must be finalized before those phases are enabled. This checkpoint
+does not claim the full Task 9b processing gate. Core 326 tests passed; core build and
+API check passed. Core typecheck/lint and focused lifetime tests are rerun at commit.

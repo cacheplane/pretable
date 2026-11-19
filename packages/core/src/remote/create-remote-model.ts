@@ -1,3 +1,4 @@
+import { createPreparationQueue } from "./cooperative-work";
 import {
   createRemoteSessionController,
   type RemoteInvocation,
@@ -75,17 +76,35 @@ export function createRemoteModel<TRow extends object, TColumns>(
     retention.dropGlobal(key);
     scheduler.wake();
   }
+  let preparationLease: object | undefined;
+  let physicalLeases = 0;
+  function releasePreparationLease() {
+    if (preparationLease) retention.cache.releaseIngress(preparationLease);
+    preparationLease = undefined;
+  }
   const scheduler = createRemoteScheduler({
     acquire(op) {
+      if (physicalLeases >= 4) return;
+      // Reserve the one serialized owned-copy workspace before any raw body
+      // can consume its credit. Scheduler concurrency is an upper bound.
+      preparationLease ??= retention.cache.reserveIngress(
+        retention.cache.limits.responseBytes,
+      );
+      if (!preparationLease) return;
       const lease = retention.cache.reserveIngress(
         retention.cache.limits.responseBytes,
       );
-      if (!lease) return;
+      if (!lease) {
+        if (!physicalLeases) releasePreparationLease();
+        return;
+      }
+      physicalLeases++;
       const key = requestKey(op),
         request = requests.get(key);
       if (request) request.physical++;
       return () => {
         retention.cache.releaseIngress(lease);
+        if (--physicalLeases === 0) releasePreparationLease();
         if (request) request.physical--;
         finishRequest(key);
       };
@@ -95,10 +114,14 @@ export function createRemoteModel<TRow extends object, TColumns>(
     if (!plan || !plan.commit()) return false;
     for (const r of plan.evictions)
       sessionController.evictRange(r.route, r.start, r.end, true);
-    sessionController.retainTopology([...retention.groups.values()]);
+    sessionController.retainTopology(
+      [...retention.groups.values()],
+      retention.groups,
+    );
     return true;
   }
   const sessionController = createRemoteSessionController(provider, {
+    prepareResponse: createPreparationQueue(),
     rootRangeSize: blockSize,
     now: options.now,
     onReset(event) {
@@ -267,7 +290,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
     ): Promise<PretableRemoteResult<T>> {
       if (
         retention.cache.limits.ingressBytes <
-        retention.cache.limits.responseBytes
+        2 * retention.cache.limits.responseBytes
       ) {
         retention.capacity = "minimum-visible-too-large";
         return { ok: false, error: { code: "cancelled" } };
@@ -318,7 +341,10 @@ export function createRemoteModel<TRow extends object, TColumns>(
   );
   function publish() {
     if (disposed) return;
-    sessionController.retainTopology([...retention.groups.values()]);
+    sessionController.retainTopology(
+      [...retention.groups.values()],
+      retention.groups,
+    );
     snapshot = createModelView(
       sessionController.getSnapshot(),
       retention,
@@ -528,9 +554,8 @@ export function createRemoteModel<TRow extends object, TColumns>(
     for (
       let rank = next.start;
       index && rank < Math.min(next.end, index.rowCount);
-      rank++
     ) {
-      const address = index.at(rank)!;
+      const address = index.spanAt(rank)!;
       const route =
         address.parent === null
           ? []
@@ -538,6 +563,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
       const start = Math.floor(address.ordinal / blockSize) * blockSize;
       const block = { route, start, end: start + blockSize };
       demands.set(rangeAddress(route, start, block.end), block);
+      rank += Math.min(block.end - address.ordinal, address.end - rank);
       if (demands.size > 64) {
         retention.capacity = "minimum-visible-too-large";
         refuseViewport();
@@ -795,6 +821,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
       refusedViewport = undefined;
       sessionController.dispose();
       scheduler.dispose();
+      releasePreparationLease();
       retention.clearBodies();
       retention.clearIntent();
       retention.dropGlobal("viewport");

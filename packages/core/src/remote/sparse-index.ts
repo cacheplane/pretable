@@ -162,9 +162,18 @@ export class SparseIndex {
     return result;
   }
   at(rank: number): { parent: string | null; ordinal: number } | undefined {
+    const span = this.spanAt(rank);
+    return span ? { parent: span.parent, ordinal: span.ordinal } : undefined;
+  }
+  /** Exclusive display end of this contiguous sibling run. A child expansion
+   * always ends the run, so range planning can skip blocks without losing it. */
+  spanAt(
+    rank: number,
+  ): { parent: string | null; ordinal: number; end: number } | undefined {
     if (!Number.isSafeInteger(rank) || rank < 0 || rank >= this.rowCount)
       return undefined;
     let parent: string | null = null;
+    let base = 0;
     for (;;) {
       const branch: Branch = this.branches.get(parent)!;
       let lo = 0,
@@ -179,10 +188,12 @@ export class SparseIndex {
       if (entry && rank < entry.end) {
         parent = entry.id;
         rank -= entry.start;
+        base += entry.start;
         continue;
       }
       return {
         parent,
+        end: base + (branch.expanded[lo]?.start ?? branch.extent),
         ordinal:
           rank - (entry ? entry.extraBefore + entry.end - entry.start : 0),
       };

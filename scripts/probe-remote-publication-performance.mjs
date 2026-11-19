@@ -25,12 +25,19 @@ const processingSlices = [];
 const starts = new Map();
 const callbackHook = createHook({
   before(id) {
-    starts.set(id, performance.now());
+    starts.set(id, {
+      time: performance.now(),
+      provider: providerPreparationMs,
+    });
   },
   after(id) {
     const start = starts.get(id);
     if (start !== undefined) {
-      processingSlices.push(performance.now() - start);
+      processingSlices.push(
+        performance.now() -
+          start.time -
+          (providerPreparationMs - start.provider),
+      );
       starts.delete(id);
     }
   },
@@ -65,9 +72,12 @@ const blockSize = Number(process.env.REMOTE_BLOCK_SIZE ?? 1000);
 const model = createRemoteModel(provider, { blockSize });
 callbackHook.enable();
 await model.setQuery({ ...groupedQuery, aggregates: [] });
+const providerBeforeDemand = providerPreparationMs;
 const demandStart = performance.now();
 const demand = model.demandViewport({ start: 0, end: 5000 });
 const demandCommandMs = performance.now() - demandStart;
+const demandModelProcessingMs =
+  demandCommandMs - (providerPreparationMs - providerBeforeDemand);
 await demand;
 const fillMs = performance.now() - demandStart;
 await new Promise((resolve) => setImmediate(resolve));
@@ -113,6 +123,7 @@ console.log(
       providerDelayMs: 0,
       providerPreparationMs,
       demandCommandMs,
+      demandModelProcessingMs,
       fillProcessingCallbacks: summarize(processingSlices),
       initial,
       final: model.getDiagnostics(),

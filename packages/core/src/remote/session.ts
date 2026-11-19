@@ -75,6 +75,10 @@ type RemoteInvoke = <T>(
   run: (signal?: PretableRemoteSignal) => Promise<PretableRemoteResult<T>>,
 ) => Promise<PretableRemoteResult<T>>;
 interface Options<TRow extends object> {
+  readonly prepareResponse?: (
+    signal: PretableRemoteSignal,
+    work: () => Promise<void>,
+  ) => Promise<void>;
   readonly prepareQuery?: (generation: number) => boolean;
   readonly prepareSession?: (
     session: PretableRemoteSession,
@@ -586,66 +590,86 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         !owns(c, key, owner)
       )
         return;
-      const answer = response.ok
-        ? c.validator.acceptRange(request, response.value, false)
-        : response;
-      if (!answer.ok) {
+      const process = async () => {
+        if (!owns(c, key, owner) || expired(c) || !owns(c, key, owner)) return;
+        const answer = response.ok
+          ? options.prepareResponse
+            ? await c.validator!.acceptRangeCooperatively(
+                request,
+                response.value,
+                owner.signal,
+                () => owns(c, key, owner) && !expired(c) && owns(c, key, owner),
+              )
+            : c.validator!.acceptRange(request, response.value, false)
+          : response;
+        if (
+          !answer ||
+          !owns(c, key, owner) ||
+          expired(c) ||
+          !owns(c, key, owner)
+        )
+          return;
+        if (!answer.ok) {
+          c.owners.delete(key);
+          c.requests.delete(key);
+          handleError(c, answer.error, key, request);
+          return;
+        }
+        let plan: RemoteAdmissionPlan | undefined;
+        try {
+          plan = options.prepareAdmission?.({
+            generation: c.generation,
+            root,
+            session: c.session!,
+            value: answer.value,
+          });
+        } catch {
+          /* Composition reports its own admission diagnostic. */
+        }
+        if (!owns(c, key, owner)) return;
+        if (options.prepareAdmission && (!plan || !plan.commit())) {
+          c.owners.delete(key);
+          c.requests.delete(key);
+          notify(snapshot);
+          return;
+        }
+        for (const r of plan?.evictions ?? [])
+          evictRange(r.route, r.start, r.end, true);
+        c.validator!.commitRange(answer.value);
         c.owners.delete(key);
         c.requests.delete(key);
-        handleError(c, answer.error, key, request);
-        return;
-      }
-      let plan: RemoteAdmissionPlan | undefined;
-      try {
-        plan = options.prepareAdmission?.({
-          generation: c.generation,
-          root,
-          session: c.session,
-          value: answer.value,
-        });
-      } catch {
-        /* Composition reports its own admission diagnostic. */
-      }
-      if (!owns(c, key, owner)) return;
-      if (options.prepareAdmission && (!plan || !plan.commit())) {
-        c.owners.delete(key);
-        c.requests.delete(key);
-        notify(snapshot);
-        return;
-      }
-      for (const r of plan?.evictions ?? [])
-        evictRange(r.route, r.start, r.end, true);
-      c.validator.commitRange(answer.value);
-      c.owners.delete(key);
-      c.requests.delete(key);
-      if (root) {
-        if (visibleValidator !== c.validator) visibleValidator?.dispose();
-        visibleValidator = c.validator;
-        c.published = true;
-        publish({
-          state: "ready",
-          generation,
-          view: Object.freeze({
-            session: c.session,
-            ranges: Object.freeze([answer.value]),
-            summaries: Object.freeze([]),
-          }),
-        });
-      } else {
-        const errors = { ...snapshot.errors };
-        delete errors[key];
-        publish({
-          state: "ready",
-          generation,
-          view: viewWith([
-            ...(snapshot.view?.ranges ?? []).filter(
-              (r) => rangeAddress(r.route, r.start, r.end) !== key,
-            ),
-            answer.value,
-          ]),
-          errors: Object.freeze(errors),
-        });
-      }
+        if (root) {
+          if (visibleValidator !== c.validator) visibleValidator?.dispose();
+          visibleValidator = c.validator;
+          c.published = true;
+          publish({
+            state: "ready",
+            generation,
+            view: Object.freeze({
+              session: c.session!,
+              ranges: Object.freeze([answer.value]),
+              summaries: Object.freeze([]),
+            }),
+          });
+        } else {
+          const errors = { ...snapshot.errors };
+          delete errors[key];
+          publish({
+            state: "ready",
+            generation,
+            view: viewWith([
+              ...(snapshot.view?.ranges ?? []).filter(
+                (r) => rangeAddress(r.route, r.start, r.end) !== key,
+              ),
+              answer.value,
+            ]),
+            errors: Object.freeze(errors),
+          });
+        }
+      };
+      if (response.ok && options.prepareResponse)
+        await options.prepareResponse(owner.signal, process);
+      else await process();
     } finally {
       consumed(owner);
     }
@@ -814,46 +838,53 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
           !owns(c, key, owner)
         )
           return;
-        const answer = response.ok
-          ? c.validator.acceptSummary(scope, response.value, false)
-          : response;
-        if (!answer.ok) {
+        const process = async () => {
+          if (!owns(c, key, owner) || expired(c) || !owns(c, key, owner))
+            return;
+          const answer = response.ok
+            ? c.validator!.acceptSummary(scope, response.value, false)
+            : response;
+          if (!answer.ok) {
+            c.owners.delete(key);
+            handleError(c, answer.error, key);
+            return;
+          }
+          let plan: RemoteAdmissionPlan | undefined;
+          try {
+            plan = options.prepareAdmission?.({
+              generation: c.generation,
+              root: false,
+              session: c.session!,
+              value: answer.value,
+            });
+          } catch {
+            /* Composition reports its own admission diagnostic. */
+          }
+          if (!owns(c, key, owner)) return;
+          if (options.prepareAdmission && (!plan || !plan.commit())) {
+            c.owners.delete(key);
+            notify(snapshot);
+            return;
+          }
+          for (const r of plan?.evictions ?? [])
+            evictRange(r.route, r.start, r.end, true);
+          c.validator!.commitSummary(answer.value);
           c.owners.delete(key);
-          handleError(c, answer.error, key);
-          return;
-        }
-        let plan: RemoteAdmissionPlan | undefined;
-        try {
-          plan = options.prepareAdmission?.({
-            generation: c.generation,
-            root: false,
-            session: c.session,
-            value: answer.value,
+          const errors = { ...snapshot.errors };
+          delete errors[key];
+          publish({
+            state: "ready",
+            generation,
+            view: viewWith(snapshot.view!.ranges, [
+              ...snapshot.view!.summaries.filter((s) => s.scope !== scope),
+              answer.value,
+            ]),
+            errors: Object.freeze(errors),
           });
-        } catch {
-          /* Composition reports its own admission diagnostic. */
-        }
-        if (!owns(c, key, owner)) return;
-        if (options.prepareAdmission && (!plan || !plan.commit())) {
-          c.owners.delete(key);
-          notify(snapshot);
-          return;
-        }
-        for (const r of plan?.evictions ?? [])
-          evictRange(r.route, r.start, r.end, true);
-        c.validator.commitSummary(answer.value);
-        c.owners.delete(key);
-        const errors = { ...snapshot.errors };
-        delete errors[key];
-        publish({
-          state: "ready",
-          generation,
-          view: viewWith(snapshot.view!.ranges, [
-            ...snapshot.view!.summaries.filter((s) => s.scope !== scope),
-            answer.value,
-          ]),
-          errors: Object.freeze(errors),
-        });
+        };
+        if (response.ok && options.prepareResponse)
+          await options.prepareResponse(owner.signal, process);
+        else await process();
       } finally {
         consumed(owner);
       }
@@ -878,9 +909,10 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         readonly childCount: number;
         readonly ordinal?: number;
       }[],
+      lookup?: ReadonlyMap<string, { readonly childCount: number }>,
     ) {
       visibleTopology = nodes;
-      visibleValidator?.retainTopology(nodes);
+      visibleValidator?.retainTopology(nodes, lookup);
     },
     cancelReadsExcept(keys: ReadonlySet<string>) {
       const c = current;

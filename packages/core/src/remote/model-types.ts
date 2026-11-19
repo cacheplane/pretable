@@ -35,7 +35,7 @@ export type PretableRemoteCapacity =
 export interface PretableRemoteModelOptions {
   readonly blockSize?: number;
   readonly limits?: Partial<PretableRemoteModelLimits>;
-  /** Must be pure; reentrant/throwing hooks cause admission refusal. Transports must separately bound decoded bodies. */
+  /** Must be pure and finish within the 8 ms processing budget; this synchronous hook cannot be preempted. Reentrant/throwing hooks cause refusal. Transports must separately bound decoded bodies. */
   readonly estimateResponseBytes?: (value: unknown) => number;
   readonly now?: () => number;
 }

@@ -1,3 +1,5 @@
+import { prepareCooperatively } from "./cooperative-work";
+import { RangeEvidence } from "./range-evidence";
 import {
   canonicalRemoteRoute,
   remoteAggregateDefinitionKey,
@@ -7,13 +9,13 @@ import {
 import type {
   PretableRemoteAggregateValue,
   PretableRemoteError,
-  PretableRemoteNode,
   PretableRemoteQuery,
   PretableRemoteRange,
   PretableRemoteRangeRequest,
   PretableRemoteResult,
   PretableRemoteRoute,
   PretableRemoteSession,
+  PretableRemoteSignal,
   PretableRemoteSummary,
 } from "./types";
 
@@ -33,9 +35,18 @@ const text = (s: unknown): s is string => typeof s === "string" && s.length > 0;
  * (including undefined, finite numbers and -0). No accessors, symbols, classes or
  * executable values. Own copies are frozen so provider/consumer mutations cannot
  * change validation evidence. Query keys and values never enter diagnostics. */
+function completeSteps<T>(steps: Generator<void, T>): T {
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
 export function snapshotWire<T>(value: T): T {
+  return completeSteps(snapshotWireSteps(value));
+}
+export function* snapshotWireSteps<T>(value: T): Generator<void, T> {
   const active = new Set<object>();
-  function copy(v: unknown, depth: number): unknown {
+  function* copy(v: unknown, depth: number): Generator<void, unknown> {
     check(depth <= 64);
     if (
       v === null ||
@@ -58,24 +69,43 @@ export function snapshotWire<T>(value: T): T {
     const result: Record<string, unknown> | unknown[] = isArray ? [] : {};
     const keys = Reflect.ownKeys(v);
     if (isArray) check(keys.length === (v as unknown[]).length + 1);
+    const originals: unknown[] = [];
     for (const key of keys) {
-      if (isArray && key === "length") continue;
+      if (isArray && key === "length") {
+        originals.push((v as unknown[]).length);
+        continue;
+      }
       check(typeof key === "string");
       const d = Object.getOwnPropertyDescriptor(v, key)!;
       check(d.enumerable && "value" in d);
+      originals.push(d.value);
       if (isArray)
         check(
           /^(0|[1-9]\d*)$/.test(key) && Number(key) < (v as unknown[]).length,
         );
       Object.defineProperty(result, key, {
-        value: copy(d.value, depth + 1),
+        value: yield* copy(d.value, depth + 1),
         enumerable: true,
       });
+      yield;
     }
+    // Returned wire values transfer read ownership until acceptance. Catch
+    // mutations observable during a suspended object traversal without changing
+    // caller-owned inputs or exposing the partially copied result.
+    for (let i = 0; i < keys.length; i++) {
+      const descriptor = Object.getOwnPropertyDescriptor(v, keys[i]!);
+      check(
+        descriptor &&
+          "value" in descriptor &&
+          Object.is(descriptor.value, originals[i]),
+      );
+      yield;
+    }
+    check(Reflect.ownKeys(v).length === keys.length);
     active.delete(v);
     return Object.freeze(result);
   }
-  return copy(value, 0) as T;
+  return (yield* copy(value, 0)) as T;
 }
 /** Validate the transport envelope without reading accessors or traversing a
  * successful payload. Payload validation makes the one owned deep snapshot later.
@@ -195,6 +225,9 @@ export function createResponseValidator<TRow extends object, TColumns>(
   // must account for these nodes/counts/summaries alongside the published cache.
   const ranges = new Map<string, PretableRemoteRange<TRow>>();
   const summaries = new Map<string, PretableRemoteSummary>();
+  const indexed = new RangeEvidence<TRow>();
+  let topologyLookup:
+    ReadonlyMap<string, { readonly childCount: number }> | undefined;
   let disposed = false;
   let topology: readonly {
     readonly route: PretableRemoteRoute;
@@ -235,29 +268,97 @@ export function createResponseValidator<TRow extends object, TColumns>(
       if (a.state === "error") check(validRemoteError(a.error));
     }
   }
-  function evidence() {
-    const counts = new Map<string, number>(
-      disposed ? [] : [[canonicalRemoteRoute([]), session.rootCount]],
-    );
-    for (const node of topology)
-      counts.set(canonicalRemoteRoute(node.route), node.childCount);
-    const nodes = new Map<string, PretableRemoteNode<TRow>>();
-    const ids = new Map<string, string>();
-    for (const range of ranges.values()) {
-      const route = canonicalRemoteRoute(range.route);
-      counts.set(route, range.siblingCount);
-      range.entries.forEach((node, i) => {
-        const address = JSON.stringify([route, range.start + i]);
-        nodes.set(address, node);
-        ids.set(
-          node.kind === "group" ? node.id : remoteLeafId(node.id),
-          address,
-        );
-        if (node.kind === "group")
-          counts.set(canonicalRemoteRoute(node.route), node.childCount);
-      });
+  function routeCount(route: string): number | undefined {
+    if (route === "[]") return session.rootCount;
+    const known = topologyLookup?.get(`group:${route}`);
+    if (known) return known.childCount;
+    if (!topologyLookup) {
+      const node = topology.find(
+        (node) => canonicalRemoteRoute(node.route) === route,
+      );
+      if (node) return node.childCount;
     }
-    return { counts, nodes, ids };
+    return indexed.count(route);
+  }
+  function retainRange(r: PretableRemoteRange<TRow>) {
+    const key = rangeAddress(r.route, r.start, r.end);
+    indexed.set(key, r);
+    ranges.set(key, r);
+  }
+  function* rangeSteps(
+    request: PretableRemoteRangeRequest,
+    input: PretableRemoteRange<TRow>,
+    retain: boolean,
+  ): Generator<void, PretableRemoteRange<TRow>> {
+    check(!disposed);
+    const r = yield* snapshotWireSteps(input);
+    provenance(request, session);
+    provenance(r, session);
+    routeValid(request.route);
+    routeValid(r.route);
+    check(
+      count(request.start) && count(request.end) && request.end > request.start,
+    );
+    check(
+      r.start === request.start &&
+        r.end === request.end &&
+        canonicalRemoteRoute(r.route) === canonicalRemoteRoute(request.route),
+    );
+    check(count(r.siblingCount) && Array.isArray(r.entries));
+    const route = canonicalRemoteRoute(r.route);
+    const expected = routeCount(route);
+    // A child request requires the authoritative parent descriptor first.
+    check(expected !== undefined);
+    if (expected !== r.siblingCount) fail("consistency");
+    check(
+      r.entries.length ===
+        Math.max(0, Math.min(r.end, r.siblingCount) - r.start),
+    );
+    const newIds = new Set<string>();
+    for (const [i, node] of r.entries.entries()) {
+      yield;
+      check(node && (node.kind === "group" || node.kind === "leaf"));
+      check(
+        (node.kind === "group") === r.route.length < query.rowGroups.length,
+      );
+      const ordinal = r.start + i;
+      let id: string;
+      if (node.kind === "group") {
+        routeValid(node.route);
+        check(
+          node.route.length === r.route.length + 1 &&
+            canonicalRemoteRoute(node.route.slice(0, -1)) === route,
+        );
+        check(
+          node.id === remoteGroupId(node.route) &&
+            typeof node.label === "string" &&
+            count(node.childCount),
+        );
+        check(node.leafCount === undefined || count(node.leafCount));
+        aggregateValues(node.aggregates);
+        const childCount = routeCount(canonicalRemoteRoute(node.route));
+        if (childCount !== undefined && childCount !== node.childCount)
+          fail("consistency");
+        id = node.id;
+      } else {
+        id = remoteLeafId(node.id);
+        check(
+          node.row && typeof node.row === "object" && !Array.isArray(node.row),
+        );
+      }
+      check(!newIds.has(id));
+      newIds.add(id);
+      const old = indexed.at(route, ordinal),
+        position = indexed.find(node);
+      if (
+        (old && !equal(old, node)) ||
+        (position !== undefined &&
+          (position.route !== route || position.ordinal !== ordinal))
+      )
+        fail("consistency");
+    }
+    if (retain) retainRange(r);
+    return r;
   }
   return {
     validateRequest(
@@ -269,7 +370,12 @@ export function createResponseValidator<TRow extends object, TColumns>(
         provenance(r, session);
         routeValid(r.route);
         check(count(r.start) && count(r.end) && r.end > r.start);
-        check(evidence().counts.has(canonicalRemoteRoute(r.route)));
+        // Root ownership is authoritative in the accepted session itself.
+        // Rebuilding every retained node/ID comparison cannot add evidence here.
+        check(
+          r.route.length === 0 ||
+            routeCount(canonicalRemoteRoute(r.route)) !== undefined,
+        );
         return r;
       });
     },
@@ -278,83 +384,26 @@ export function createResponseValidator<TRow extends object, TColumns>(
       input: PretableRemoteRange<TRow>,
       retain = true,
     ): PretableRemoteResult<PretableRemoteRange<TRow>> {
-      return result(() => {
-        check(!disposed);
-        const r = snapshotWire(input);
-        provenance(request, session);
-        provenance(r, session);
-        routeValid(request.route);
-        routeValid(r.route);
-        check(
-          count(request.start) &&
-            count(request.end) &&
-            request.end > request.start,
+      return result(() => completeSteps(rangeSteps(request, input, retain)));
+    },
+    async acceptRangeCooperatively(
+      request: PretableRemoteRangeRequest,
+      input: PretableRemoteRange<TRow>,
+      signal: PretableRemoteSignal,
+      current: () => boolean,
+    ): Promise<PretableRemoteResult<PretableRemoteRange<TRow>> | undefined> {
+      try {
+        const prepared = await prepareCooperatively(
+          rangeSteps(request, input, false),
+          signal,
+          current,
         );
-        check(
-          r.start === request.start &&
-            r.end === request.end &&
-            canonicalRemoteRoute(r.route) ===
-              canonicalRemoteRoute(request.route),
-        );
-        check(count(r.siblingCount) && Array.isArray(r.entries));
-        const prior = evidence(),
-          route = canonicalRemoteRoute(r.route);
-        const expected = prior.counts.get(route);
-        // A child request requires the authoritative parent descriptor first.
-        check(expected !== undefined);
-        if (expected !== r.siblingCount) fail("consistency");
-        check(
-          r.entries.length ===
-            Math.max(0, Math.min(r.end, r.siblingCount) - r.start),
-        );
-        const newIds = new Set<string>();
-        for (const [i, node] of r.entries.entries()) {
-          check(node && (node.kind === "group" || node.kind === "leaf"));
-          check(
-            (node.kind === "group") === r.route.length < query.rowGroups.length,
-          );
-          const address = JSON.stringify([route, r.start + i]);
-          let id: string;
-          if (node.kind === "group") {
-            routeValid(node.route);
-            check(
-              node.route.length === r.route.length + 1 &&
-                canonicalRemoteRoute(node.route.slice(0, -1)) === route,
-            );
-            check(
-              node.id === remoteGroupId(node.route) &&
-                typeof node.label === "string" &&
-                count(node.childCount),
-            );
-            check(node.leafCount === undefined || count(node.leafCount));
-            aggregateValues(node.aggregates);
-            const childCount = prior.counts.get(
-              canonicalRemoteRoute(node.route),
-            );
-            if (childCount !== undefined && childCount !== node.childCount)
-              fail("consistency");
-            id = node.id;
-          } else {
-            id = remoteLeafId(node.id);
-            check(
-              node.row &&
-                typeof node.row === "object" &&
-                !Array.isArray(node.row),
-            );
-          }
-          check(!newIds.has(id));
-          newIds.add(id);
-          const old = prior.nodes.get(address),
-            position = prior.ids.get(id);
-          if (
-            (old && !equal(old, node)) ||
-            (position !== undefined && position !== address)
-          )
-            fail("consistency");
-        }
-        if (retain) ranges.set(rangeAddress(r.route, r.start, r.end), r);
-        return r;
-      });
+        return prepared.ok ? { ok: true, value: prepared.value } : undefined;
+      } catch (error) {
+        return result(() => {
+          throw error;
+        });
+      }
     },
     acceptSummary(
       scope: "filtered" | "all",
@@ -390,12 +439,13 @@ export function createResponseValidator<TRow extends object, TColumns>(
         return s;
       });
     },
-    retainTopology(nodes: typeof topology) {
+    retainTopology(nodes: typeof topology, lookup?: typeof topologyLookup) {
       topology = nodes;
+      topologyLookup = lookup;
     },
     /** Commit only a successful preflight, with no external callbacks between. */
     commitRange(r: PretableRemoteRange<TRow>) {
-      ranges.set(rangeAddress(r.route, r.start, r.end), r);
+      retainRange(r);
     },
     commitSummary(s: PretableRemoteSummary) {
       summaries.set(s.scope, s);
@@ -403,24 +453,35 @@ export function createResponseValidator<TRow extends object, TColumns>(
     /** Release only together with the corresponding published payload eviction.
      * Forgotten overlaps remain the provider's sessionwide consistency duty. */
     releaseRange(route: PretableRemoteRoute, start: number, end: number) {
-      ranges.delete(rangeAddress(route, start, end));
+      const key = rangeAddress(route, start, end);
+      ranges.delete(key);
+      indexed.delete(key);
     },
     releaseSummary(scope: "filtered" | "all") {
       summaries.delete(scope);
     },
     retention() {
-      const e = evidence();
+      const counts = new Set<string>(disposed ? [] : ["[]"]);
+      for (const node of topology) counts.add(canonicalRemoteRoute(node.route));
+      for (const range of ranges.values()) {
+        counts.add(canonicalRemoteRoute(range.route));
+        for (const node of range.entries)
+          if (node.kind === "group")
+            counts.add(canonicalRemoteRoute(node.route));
+      }
       return {
         nodes: [...ranges.values()].reduce(
           (total, r) => total + r.entries.length,
           0,
         ),
-        counts: e.counts.size,
+        counts: counts.size,
         summaries: summaries.size,
       };
     },
     dispose() {
       ranges.clear();
+      indexed.clear();
+      topologyLookup = undefined;
       summaries.clear();
       topology = [];
       disposed = true;
