@@ -125,6 +125,7 @@ export interface PretableRemoteSession {
  * Token/query provenance is inherited from the containing range; route supplies scope.
  * @public */
 export type PretableRemoteAggregateValue = {
+  /** Use remoteAggregateDefinitionKey with the effective query registry, column and aggregate ID. */
   readonly aggregateDefinitionKey: string;
   readonly authority: "server";
 } & (
@@ -180,7 +181,12 @@ export interface PretableRemoteSummary {
   readonly completeness: "complete" | "partial";
   readonly values: Readonly<Record<string, PretableRemoteAggregateValue>>;
 }
-/** The provider must serve one coherent version or reject it; echoing tokens alone is insufficient. @public */
+/** The provider must serve one coherent version or reject it; echoing tokens alone is insufficient.
+ * Response rows and aggregate values use acyclic plain records/dense arrays with
+ * string, boolean, null, undefined and finite number values. Classes, accessors,
+ * symbols and executable values require application transport encoding.
+ * Client evidence is retained with cached ranges; forgotten overlaps remain the
+ * provider's consistency obligation. @public */
 export interface PretableRemoteProvider<TRow extends object, TColumns> {
   readonly capabilities: PretableRemoteCapabilities;
   open(

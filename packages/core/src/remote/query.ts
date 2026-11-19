@@ -350,3 +350,13 @@ export function prepareRemoteQuery<TColumns>(
     };
   }
 }
+
+/** Collision-safe identity of the effective registered aggregate definition.
+ * Providers must use this helper for group and summary answers. @public */
+export function remoteAggregateDefinitionKey(
+  registryVersion: string,
+  columnId: string,
+  aggregateId: string,
+): string {
+  return canonical([text(registryVersion), text(columnId), text(aggregateId)]);
+}

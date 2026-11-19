@@ -198,6 +198,7 @@ export type {
 
 export {
   canonicalRemoteRoute,
+  remoteAggregateDefinitionKey,
   remoteGroupId,
   remoteLeafId,
   prepareRemoteQuery,

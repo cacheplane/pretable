@@ -1,5 +1,6 @@
 import {
   canonicalRemoteRoute,
+  remoteAggregateDefinitionKey,
   remoteGroupId,
   remoteLeafId,
   type PretableRemoteAggregateValue,
@@ -76,7 +77,11 @@ export function aggregateOrders(
     query.aggregates.map((aggregate) => [
       aggregate.id,
       {
-        aggregateDefinitionKey: `${query.registryVersion}:${aggregate.columnId}:${aggregate.id}`,
+        aggregateDefinitionKey: remoteAggregateDefinitionKey(
+          query.registryVersion,
+          aggregate.columnId,
+          aggregate.id,
+        ),
         authority: "server",
         state: "ready",
         completeness: "complete",

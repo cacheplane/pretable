@@ -1660,6 +1660,9 @@ export type PretableVisibleRowRef<TRowId extends PretableRowId> = {
 export type Prettify<T> = { [K in keyof T]: T[K]; } & {};
 
 // @public
+export function remoteAggregateDefinitionKey(registryVersion: string, columnId: string, aggregateId: string): string;
+
+// @public
 export function remoteGroupId(route: PretableRemoteRoute): string;
 
 // @public

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   prepareRemoteQuery,
+  remoteAggregateDefinitionKey,
   remoteLeafId,
   type PretableRemoteResult,
   type PretableRemoteSession,
@@ -99,7 +100,11 @@ describe("bounded orders reference provider (fixture only)", () => {
           completeness: "complete",
           state: "ready",
           value: 100,
-          aggregateDefinitionKey: "orders@1:amount:amount.sum@1",
+          aggregateDefinitionKey: remoteAggregateDefinitionKey(
+            "orders@1",
+            "amount",
+            "amount.sum@1",
+          ),
         },
       },
     });
