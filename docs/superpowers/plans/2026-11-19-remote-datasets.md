@@ -142,7 +142,17 @@ passed. Layout 161, renderer 176, React 2,083, new matrix 11, legacy browser 10,
 and website production Chromium/WebKit 16 tests passed. Root independently
 reran formatting, targeted lint and React typecheck successfully. See
 `status/remote-datasets/baseline.md` for commands, geometry and the diagnosed
-development-only StrictMode request replay. Task 2 is in progress.
+development-only StrictMode request replay.
+
+Task 2 complete through `3db37c1c`: specification and quality reviews passed,
+including incremental reviews of the final coverage additions. Query/provider
+contracts, exact range/count and summary capabilities, session identities,
+aggregate availability and unloaded/loading/error slot types are exported.
+69 query tests pass (independently rerun by the controller); core typecheck,
+build, ES2022-only consumer types, API freshness and lint passed. Full core suite
+passed 61 tests before the final test-only expansion. React overload checks
+remain intentionally in Task 10. See `status/remote-datasets/provider-contract.md`.
+Task 3 is in progress.
 
 ## Tasks
 
@@ -160,11 +170,11 @@ development-only StrictMode request replay. Task 2 is in progress.
 
 **Files:** Create `packages/core/src/remote/types.ts`, `query.ts`, `__tests__/query.test.ts`; modify `packages/core/src/public_api.ts`; create `type-tests/react/remote-model.types.tsx` and `type-tests/core/remote-model.types.ts`.
 
-- [ ] **Step 1:** Write query identity cases for typed null/number/string keys, source/auth/schema changes, filters, group and leaf sorts, aggregate definitions, locale/projection/search and semantic registry versions.
-- [ ] **Step 2:** Add compile-time cases for rows/model inference remaining unchanged and remote versus manual-window/write inputs being exclusive; stage React type assertions with Task 10 if the surface overload is not yet present. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Define provider/result/group/leaf/status/error discriminated unions, capability negotiation and the remote read-only handle. Require exact root/child counts. Canonicalize every supported data dependency and reject unsupported query operators. Keep placeholders out of existing local unions. Freeze the minimum type contract after reviewing generated declaration shape.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/query.test.ts`. Expected: Identity tests pass without network access; unsupported capabilities fail before open/read dispatch. Record API decisions and unresolved names before downstream implementation.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: define grouped remote provider contracts`.
+- [x] **Step 1:** Write query identity cases for typed null/number/string keys, source/auth/schema changes, filters, group and leaf sorts, aggregate definitions, locale/projection/search and semantic registry versions.
+- [x] **Step 2:** Add compile-time cases for rows/model inference remaining unchanged and remote versus manual-window/write inputs being exclusive; stage React type assertions with Task 10 if the surface overload is not yet present. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Define provider/result/group/leaf/status/error discriminated unions, capability negotiation and the remote read-only handle. Require exact root/child counts. Canonicalize every supported data dependency and reject unsupported query operators. Keep placeholders out of existing local unions. Freeze the minimum type contract after reviewing generated declaration shape.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/query.test.ts`. Expected: Identity tests pass without network access; unsupported capabilities fail before open/read dispatch. Record API decisions and unresolved names before downstream implementation.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: define grouped remote provider contracts`.
 
 ### Task 3: Consistent reference provider and export feasibility
 
