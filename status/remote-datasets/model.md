@@ -22,7 +22,11 @@ charged fixed-size logical intent. After atomic root publication, one guarded
 command continuation recomputes that intent against the accepted projection.
 Stale grouped routes are never sent into a replacement query before its own
 root/topology publishes. Disposal, source replacement and newer demand invalidate
-queued replay; no loading telemetry event creates its own queued continuation. The scheduler keeps its reviewed four-physical/64-queued/
+queued replay; no loading telemetry event creates its own queued continuation.
+Replay ownership follows the admitted intent and accepted generation. A no-op
+query or rejected viewport cannot strand it, while accepted replacement demand
+still wins. Fulfilling prior intent preserves an unrelated viewport refusal and
+its Retry target; automatic admission refusal does not create a replay loop. The scheduler keeps its reviewed four-physical/64-queued/
 256-subscriber limits and focused-root priority.
 
 `getSnapshot`, `getStatus`, `readSlot`/`getSlot`, `getDiagnostics`, loaded iteration
@@ -160,8 +164,8 @@ not claim a completed remote grid feature or unlimited browser scroll height.
 Verified with Node 24.20.0 and pnpm 10.12.1:
 
 - `pnpm --filter @pretable/core test src/remote/__tests__ --maxWorkers=1`:
-  282 tests passed across nine files, including all 235 pre-Task-8 remote tests.
-- `pnpm --filter @pretable/core test --maxWorkers=1`: 299 tests passed across
+  285 tests passed across nine files, including all 235 pre-Task-8 remote tests.
+- `pnpm --filter @pretable/core test --maxWorkers=1`: 302 tests passed across
   thirteen files, including the unchanged local core tests.
 - Core `typecheck`, `lint`, `build` and `api:check`: passed.
 - `tsc -p type-tests/tsconfig.json --noEmit` and

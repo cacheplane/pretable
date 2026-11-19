@@ -60,7 +60,6 @@ export function createRemoteModel<TRow extends object, TColumns>(
     | { readonly generation: number; readonly viewport: PretableRemoteViewport }
     | undefined;
   let scheduledViewport: typeof pendingViewport;
-  let demandSequence = 0;
   function clearPendingViewport() {
     pendingViewport = undefined;
     scheduledViewport = undefined;
@@ -367,20 +366,22 @@ export function createRemoteModel<TRow extends object, TColumns>(
       retention.visible === state.generation
     ) {
       scheduledViewport = intent;
-      const expectedCommand = command,
-        expectedDemand = demandSequence;
-      // This is the continuation of an explicit demand command, never a read
-      // side effect. Resolve ranks against the newly accepted projection.
+      // The admitted intent and accepted generation are ownership. A no-op
+      // query or refused demand does not supersede either. Release the marker
+      // on real invalidation so a still-owned intent can be re-evaluated later.
       void Promise.resolve().then(() => {
         if (
-          !disposed &&
-          command === expectedCommand &&
-          demandSequence === expectedDemand &&
-          pendingViewport === intent &&
-          snapshot.status.state === "ready" &&
-          snapshot.generation === intent.generation
-        )
-          void demandViewport(intent.viewport, true);
+          disposed ||
+          pendingViewport !== intent ||
+          snapshot.status.state !== "ready" ||
+          snapshot.generation !== intent.generation
+        ) {
+          if (scheduledViewport === intent) scheduledViewport = undefined;
+          return;
+        }
+        // One automatic attempt per intent. A capacity refusal remains explicit
+        // until Retry/new demand, rather than looping on later notifications.
+        void demandViewport(intent.viewport, true, true);
       });
     }
   });
@@ -452,7 +453,11 @@ export function createRemoteModel<TRow extends object, TColumns>(
     retention.capacity = undefined;
     await sessionController.setQuery(next);
   }
-  async function demandViewport(next: PretableRemoteViewport, force = false) {
+  async function demandViewport(
+    next: PretableRemoteViewport,
+    force = false,
+    replay = false,
+  ) {
     if (disposed) return;
     if (
       !Number.isSafeInteger(next.start) ||
@@ -462,7 +467,6 @@ export function createRemoteModel<TRow extends object, TColumns>(
     )
       throw new RangeError("Invalid viewport");
     const expectedCommand = command;
-    demandSequence++;
     if (
       !force &&
       refusedViewport?.start === next.start &&
@@ -483,7 +487,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
       end: next.end,
     });
     const refuseViewport = () => {
-      refusedViewport = requestedViewport;
+      if (!replay || !refusedViewport) refusedViewport = requestedViewport;
       publish();
     };
     if (next.end - next.start > blockSize * 64) {
@@ -516,7 +520,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
       publish();
       return;
     }
-    retention.capacity = undefined;
+    if (!replay) retention.capacity = undefined;
     const index = snapshot.displayCount
       ? retention.index(snapshot.rootCount)
       : undefined;
@@ -561,7 +565,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
     viewport = requestedViewport;
     pendingViewport = undefined;
     scheduledViewport = undefined;
-    refusedViewport = undefined;
+    if (!replay) refusedViewport = undefined;
     wanted = demands;
     sessionController.cancelReadsExcept(new Set(demands.keys()));
     if (disposed || expectedCommand !== command) return;

@@ -860,3 +860,55 @@ it.each(["dispose", "source"] as const)(
     }
   },
 );
+
+it.each(["same-query", "rejected-viewport"] as const)(
+  "fulfills admitted loading intent after a queued %s command",
+  async (action) => {
+    const f = setup();
+    let acted = false;
+    f.model.subscribe(() => {
+      if (!acted && f.model.getStatus().state === "ready") {
+        acted = true;
+        void Promise.resolve().then(() =>
+          action === "same-query"
+            ? f.model.setQuery(query)
+            : f.model.demandViewport({ start: 0, end: 1000 }),
+        );
+      }
+    });
+    const start = f.model.setQuery(query);
+    await f.model.demandViewport({ start: 4, end: 6 });
+    await f.open(0, 10);
+    await f.read(0);
+    await start;
+    expect(f.reads).toHaveLength(2);
+    expect(f.reads[1]!.request).toMatchObject({ start: 4, end: 6 });
+    if (action === "rejected-viewport")
+      expect(f.model.getSnapshot().capacity).toBe("minimum-visible-too-large");
+    await f.read(1);
+    expect(f.model.readSlot(4)?.kind).toBe("loaded");
+    f.model.dispose();
+  },
+);
+it("lets accepted newer viewport demand supersede queued loading intent", async () => {
+  const f = setup();
+  let acted = false;
+  f.model.subscribe(() => {
+    if (!acted && f.model.getStatus().state === "ready") {
+      acted = true;
+      void Promise.resolve().then(() =>
+        f.model.demandViewport({ start: 6, end: 8 }),
+      );
+    }
+  });
+  const start = f.model.setQuery(query);
+  await f.model.demandViewport({ start: 4, end: 6 });
+  await f.open(0, 10);
+  await f.read(0);
+  await start;
+  expect(f.reads).toHaveLength(2);
+  expect(f.reads[1]!.request).toMatchObject({ start: 6, end: 8 });
+  await f.read(1);
+  expect(f.model.readSlot(4)?.kind).toBe("unloaded");
+  f.model.dispose();
+});
