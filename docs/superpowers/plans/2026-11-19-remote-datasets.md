@@ -176,7 +176,14 @@ coherent expiry views, and purges scoped revocation correctly. Validation eviden
 is evictable alongside payloads; scheduler invocation and expiry hooks are explicit.
 94 focused tests and 189 core tests pass; 18 reference-provider tests passed after
 the canonical definition-key update. Typecheck/build/API/lint/format checks passed.
-Task 6 is in progress.
+Task 6 complete through `3861a514`: specification and quality reviews passed.
+Scheduler enforces 4 physical requests, 64 queued demands including backoff,
+and bounded subscribers. Absolute dispatch/settlement deadlines, independent
+cancellation, late authority, once-only abandoned-open cleanup and reentrant
+cleanup are covered. Controller independently reran all 215 remote tests and core
+typecheck successfully; build/lint/diff checks passed. See
+`status/remote-datasets/scheduler.md` for ownership and clock contracts.
+Task 7 is in progress.
 
 ## Tasks
 
@@ -234,11 +241,11 @@ Task 6 is in progress.
 
 **Files:** Create `packages/core/src/remote/scheduler.ts`, `__tests__/scheduler.test.ts`.
 
-- [ ] **Step 1:** Use a fake clock to test focused demand before viewport, overscan and prefetch; coalesce superseded scroll ranges and deduplicate identical demands.
-- [ ] **Step 2:** Write four active/64 queued limit tests, abort-ignoring and never-settling providers, 250 ms/1 s retry delays, bounded retry-after, 30 s deadline, and disposal. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement explicit permits held until invoked promises settle, bounded queue ownership and initial-plus-two transient attempts. Invalid capability/response/auth/consistency errors never retry automatically. Timeout reports failure without freeing unsettled physical invocation capacity. Expose stalled-provider diagnostics and prevent replacement loops.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/scheduler.test.ts`. Expected: Request counters stay bounded under rapid scrolling, cancellation and disposal; no real sleeps are used in unit tests.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: schedule bounded remote range reads`.
+- [x] **Step 1:** Use a fake clock to test focused demand before viewport, overscan and prefetch; coalesce superseded scroll ranges and deduplicate identical demands.
+- [x] **Step 2:** Write four active/64 queued limit tests, abort-ignoring and never-settling providers, 250 ms/1 s retry delays, bounded retry-after, 30 s deadline, and disposal. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement explicit permits held until invoked promises settle, bounded queue ownership and initial-plus-two transient attempts. Invalid capability/response/auth/consistency errors never retry automatically. Timeout reports failure without freeing unsettled physical invocation capacity. Expose stalled-provider diagnostics and prevent replacement loops.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/scheduler.test.ts`. Expected: Request counters stay bounded under rapid scrolling, cancellation and disposal; no real sleeps are used in unit tests.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: schedule bounded remote range reads`.
 
 ### Task 7: Cache admission, metadata and measurement budgets
 
