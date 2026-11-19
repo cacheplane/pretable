@@ -313,3 +313,99 @@ describe("remote runtime data boundaries", () => {
     expect(() => canonicalRemoteRoute(route)).toThrow();
   });
 });
+
+describe("remote provider modes and typed operands", () => {
+  it.each([
+    { rangeAccess: "cursor" },
+    { rangeAccess: null },
+    { consistency: "latest" },
+    { consistency: null },
+  ])("rejects unsupported provider mode %j", (change) => {
+    expect(
+      prepareRemoteQuery(query, {
+        ...capabilities,
+        ...change,
+      } as unknown as PretableRemoteCapabilities),
+    ).toEqual({ ok: false, error: { code: "unsupported-query" } });
+  });
+
+  type OperandColumns = readonly [
+    { id: "day"; accessor: () => string; type: "date" },
+    { id: "active"; accessor: () => boolean; type: "boolean" },
+    { id: "category"; accessor: () => "one" | "two"; type: "enum" },
+  ];
+  const operandCapabilities: PretableRemoteCapabilities = {
+    ...capabilities,
+    fields: {
+      day: {
+        type: "date",
+        operators: ["on", "before", "after", "dateBetween"],
+      },
+      active: { type: "boolean", operators: ["isAnyOf", "isNoneOf"] },
+      category: { type: "enum", operators: ["isAnyOf", "isNoneOf"] },
+    },
+  };
+  const operandQuery: PretableRemoteQuery<OperandColumns> = {
+    ...query,
+    projection: ["day", "active", "category"],
+    filters: [],
+    rowGroups: [],
+    sort: [],
+    aggregates: [],
+  };
+
+  it.each([
+    { columnId: "day", operator: "on", value: "2024-02-29" },
+    { columnId: "day", operator: "before", value: "2024-03-01" },
+    { columnId: "day", operator: "after", value: "2024-02-28" },
+    {
+      columnId: "day",
+      operator: "dateBetween",
+      value: ["2024-02-28", "2024-02-29"],
+    },
+    { columnId: "active", operator: "isAnyOf", value: [true, false] },
+    { columnId: "active", operator: "isNoneOf", value: [] },
+    { columnId: "category", operator: "isAnyOf", value: ["one", "two"] },
+    { columnId: "category", operator: "isNoneOf", value: [] },
+  ])("accepts supported typed operand %j", (filter) => {
+    expect(
+      prepareRemoteQuery(
+        {
+          ...operandQuery,
+          filters: [filter],
+        } as PretableRemoteQuery<OperandColumns>,
+        operandCapabilities,
+      ).ok,
+    ).toBe(true);
+  });
+
+  it.each([
+    { columnId: "day", operator: "on", value: "2023-02-29" },
+    { columnId: "day", operator: "on", value: "2024-04-31" },
+    { columnId: "day", operator: "on", value: "2024-13-01" },
+    { columnId: "day", operator: "on", value: "2024-2-29" },
+    { columnId: "day", operator: "on", value: 20240229 },
+    { columnId: "day", operator: "dateBetween", value: ["2024-02-28"] },
+    {
+      columnId: "day",
+      operator: "dateBetween",
+      value: ["2024-02-28", "2023-02-29"],
+    },
+    { columnId: "active", operator: "isAnyOf", value: ["true"] },
+    { columnId: "active", operator: "isNoneOf", value: [1] },
+    { columnId: "active", operator: "isAnyOf", value: true },
+    { columnId: "category", operator: "isAnyOf", value: [1] },
+    { columnId: "category", operator: "isNoneOf", value: [null] },
+    { columnId: "category", operator: "isAnyOf", value: "one" },
+  ])("rejects invalid typed operand %j", (filter) => {
+    expect(
+      prepareRemoteQuery(
+        {
+          ...operandQuery,
+          filters: [filter],
+        } as unknown as PretableRemoteQuery<OperandColumns>,
+        operandCapabilities,
+      ),
+    ).toEqual({ ok: false, error: { code: "invalid-query" } });
+  });
+});
