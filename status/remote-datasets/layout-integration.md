@@ -203,8 +203,26 @@ PRETABLE_BENCH_BASE_URL=http://127.0.0.1:43219 PRETABLE_BENCH_EXTERNAL_SERVER=1 
 ```
 
 Port 43219 was verified unused before startup; targets were explicitly local.
-The website server-data browser suite and full React suite were not rerun for
-this narrow controller read change; their Task 1 baseline remains separate.
+A fresh website production build and the original server-data suite also passed:
+**16 tests (8 Chromium + 8 WebKit), one worker, 44.7 seconds**. This verifies
+request ownership/counts, stale rows on error, totals/export/ARIA reporting,
+notify-only behavior and manual-window advancement under the shared read seam.
+The exact local commands were:
+
+```sh
+pnpm --filter '@pretable/app-website^...' build
+pnpm --filter @pretable/app-website examples:gen
+pnpm --filter @pretable/app-website exec next build
+pnpm --filter @pretable/app-website exec next start --hostname 127.0.0.1 --port 43220
+BASE_URL=http://127.0.0.1:43220 pnpm --filter @pretable/app-website exec playwright test e2e/server-data.spec.ts --workers=1
+```
+
+Port 43220 was checked unused first. The production server was stopped after
+testing; no production URL was accessed. The initial sandboxed Next compilation
+remained at the compile stage without progress and was interrupted; the authorized
+unsandboxed production build completed successfully. Existing dynamic-filesystem
+tracing warnings were reported; no test assertions or website code were changed.
+The full React suite was not rerun; its Task 1 baseline remains separate.
 Existing Vite native-config, jsdom canvas and benchmark chunk-size notices remain.
 Sandboxed Chromium launch initially failed macOS Mach-port permission checks;
 the authorized local-only unsandboxed probe passed both engines.
