@@ -1,6 +1,6 @@
 # Pretable roadmap
 
-Last reviewed: 2026-11-13
+Last reviewed: 2026-11-19
 
 Pretable is a batteries-included, domain-neutral React data grid. Correctness,
 performance, and developer experience govern its roadmap. Financial-grade
@@ -20,13 +20,23 @@ applications are a proving ground, not the product boundary.
 
 ## Current baseline
 
-The aligned public-package baseline is `0.20.3`. The shipped grid includes local
-sorting and typed filtering, selection, keyboard navigation, copy and validated
+The aligned public-package baseline is `0.21.0`. The shipped grid includes local
+sorting and typed filtering, selection, keyboard navigation, copy, CSV export, and validated
 bulk paste, typed asynchronous editing, column virtualization and layout,
 configurable row grouping and aggregation, variable-height rows, and batched
 streaming transactions. It also includes native number and canonical calendar-date
 formatting, a configurable tool panel, replaceable UI components, and external
 processing/window metadata for application-owned server data.
+
+Grand totals and summary rows shipped in `0.21.0` via
+[#622](https://github.com/cacheplane/pretable/pull/622), released through
+[#628](https://github.com/cacheplane/pretable/pull/628). Filtered and all-input
+scopes have independent engine or keyed server authority, cached raw aggregates,
+explicit completeness/freshness states, and fixed-bottom read-only summary
+tables. Summary rows do not enter selection, clipboard, or CSV output. The
+separate benchmark fix in [#623](https://github.com/cacheplane/pretable/pull/623)
+accounts for measured browser refresh cadence while retaining processing and
+correctness limits.
 
 Canonical calendar dates shipped in `0.14.0` via
 [#480](https://github.com/cacheplane/pretable/pull/480); the calendar-date design
@@ -42,17 +52,33 @@ See the current [core changelog](packages/core/CHANGELOG.md),
 [React API report](packages/react/react.api.md), and
 [committed comparative benchmark evidence](status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json).
 
-## Now — grand totals and summary rows awaiting merge
+## Now — remote datasets implementation planning
 
-Grand totals and summary rows are implemented in this development branch and
-awaiting merge; they are not part of the shipped `0.20.3` baseline. The
-[approved design](docs/superpowers/specs/2026-11-13-grand-totals-and-summary-rows-design.md)
-covers independent filtered/all-input scopes, engine or keyed server authority,
-headless leases, cached aggregates, and read-only summary rendering.
+Design the missing remote-data orchestration around the existing external-data
+primitives. **Server-side grouping is required in the first release** (product
+direction confirmed 2026-11-19), including branch loading, stable group identity,
+server aggregates, expansion, bounded caching, and explicit partial/error state.
+The first release is read-only grouped browsing with range access and exact
+immediate-child counts, confirmed on 2026-11-19. Browsing uses one consistent
+result version with explicit Refresh. Selection survives scrolling and collapse
+within that result, clears on Refresh or query change, and selects only loaded
+leaves in the expanded view through the header checkbox.
+Full-result server CSV export is also required: all matching leaf records from
+the viewed result version, regardless of collapsed or unloaded branches.
+Flat-only delivery does not satisfy this requirement.
 
-Preserve existing correctness, 60 Hz, zero-gap, and interaction-continuity gates
-while completing validation and release review. Package changelogs remain the
-source of truth for when the feature ships.
+The first design must distinguish query identity from result consistency,
+branch positions from leaf counts, and loaded records from unloaded slots.
+Preserve local-mode behavior and the existing server-supplied summary contract.
+Live subscriptions and revisioned writes are separate later slices; the initial
+remote design must leave compatible extension points without promising them.
+
+See the [research evidence](docs/research/2026-11-19-remote-datasets-research.md),
+the [design approved for planning](docs/superpowers/specs/2026-11-19-remote-datasets-design.md),
+and the [implementation plan](docs/superpowers/plans/2026-11-19-remote-datasets.md).
+Existing application-managed windows remain supported; shared layout changes must
+preserve their coordinate, eviction, accessibility and interaction contracts.
+Implementation planning is complete; runtime implementation has not started.
 
 ## Next — saved views and local history
 
@@ -67,18 +93,43 @@ track. Applications continue to own domain schemas and policy.
 
 ## Later — remote scale, analytics, and collaboration
 
-1. Extend the existing external-processing and window primitives into a
-   remote/live row model with bounded caching, typed query plans, cancellation,
-   partial/stale/error state, and ordered resynchronization.
-2. Add revisioned mutations with command IDs, base revisions, optimistic and
-   pessimistic execution, conflicts, rollback, retries, and resync.
-3. Develop domain-neutral analytical and manipulation features: pivot,
-   drill-through, context actions, export, range editing, fill, and row
-   creation/reordering. Applications own formulas and scenario semantics.
+1. Extend the grouped remote read model with live updates, ordered replay,
+   gap detection, and resynchronization; add revisioned mutations with command
+   IDs, base revisions, conflicts, rollback, and retries.
+2. Add analytical views: pivot, drill-through, grouped column headers, native
+   Excel export, and more expressive filter-building UI.
+3. Add manipulation features: range editing, fill, cut/clipboard extensions,
+   context actions, and row creation/reordering.
 4. Add provider-backed durable audit/version history, history UI,
    revert-as-new-command, redaction, retention hooks, and collaborative updates.
-5. Continue shared/personal configuration, capability-aware UI, tree data,
+5. Add tree data and master/detail as distinct capabilities from grouping;
+   consider cell spanning and built-in pagination/navigation controls.
+6. Continue shared/personal configuration, capability-aware UI, packaged UI
    localization, and accessibility hardening.
+
+## Capability gaps to track
+
+This is a gap inventory against broader grids such as AG Grid Community and
+Enterprise, not a commitment to match every feature or a claim of performance
+parity. The current prioritization above governs delivery.
+
+| Area                     | Shipped foundation                                                                                   | Remaining gap                                                                                                                                 |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Remote datasets          | External sort/filter ownership, lifecycle UI, window metadata, eviction continuity, server summaries | Managed datasource, hierarchical branch cache, scheduling/cancellation, snapshot-aware refresh, server grouping; later live resynchronization |
+| Saved views              | Controlled query and presentation state                                                              | Portable versioned documents, migration/reconciliation, stores, view-management UI                                                            |
+| Editing and manipulation | Typed async editing, validated paste, multi-range selection                                          | Atomic command history, undo/redo, fill, general multi-cell editing, cut, HTML paste, row drag/reorder                                        |
+| Analytics                | Local grouping/aggregation; filtered/all-input summaries                                             | Pivot and drill-through; remote group aggregates belong to the first remote release                                                           |
+| Export                   | CSV serialization and delivery with partial-result reporting                                         | Native Excel workbooks; explicit remote full-result export integration; summary export policy                                                 |
+| Filtering                | Typed query expressions and per-column filter controls                                               | Advanced cross-column expression-builder UI and remote capability-aware controls                                                              |
+| Layout and hierarchy     | Column pin/resize/reorder, variable-height rows, local groups                                        | Grouped column headers, spanning cells, arbitrary tree data, master/detail                                                                    |
+| Navigation and actions   | Keyboard navigation, header menus, tool panels                                                       | Built-in remote pagination/navigation UI and general context actions                                                                          |
+| Ecosystem and assurance  | React integration, headless primitives, locale formatting/messages, browser and accessibility tests  | Packaged translations, broader assistive-technology evidence; other framework renderers require a separate product decision                   |
+
+CSV export, multi-range selection, grouping, clipboard paste, and tool panels
+are already shipped and must not be listed as wholly missing. Integrated charts
+and formula engines remain outside the current product scope; adding them would
+require a deliberate scope change. Commercial support and ecosystem maturity are
+not features that a source-code checklist can establish.
 
 ## Not planned
 
