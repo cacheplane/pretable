@@ -169,7 +169,14 @@ distant seeks, actual wheel movement and stable-ID anchoring. See
 `status/remote-datasets/layout-feasibility.md` and recorded browser evidence.
 The initial feasibility checkpoint is reviewed. Scheduled/incremental measurement
 work and full gesture integration remain Task 9 gates, not 8ms claims.
-Task 5 is in progress.
+Task 5 complete through `66ae5b0f`: separate specification and quality reviews
+passed after fixing reentrant lifecycle callbacks and malformed result envelopes.
+The controller validates before atomic publication, gates late responses, preserves
+coherent expiry views, and purges scoped revocation correctly. Validation evidence
+is evictable alongside payloads; scheduler invocation and expiry hooks are explicit.
+94 focused tests and 189 core tests pass; 18 reference-provider tests passed after
+the canonical definition-key update. Typecheck/build/API/lint/format checks passed.
+Task 6 is in progress.
 
 ## Tasks
 
@@ -217,11 +224,11 @@ Task 5 is in progress.
 
 **Files:** Create `packages/core/src/remote/session.ts`, `validate-response.ts`, `__tests__/session.test.ts`, `__tests__/validate-response.test.ts`.
 
-- [ ] **Step 1:** Write A→B→A, same-token different-query, same-range retry and independent out-of-order range cases with deferred promises and an abort-ignoring provider.
-- [ ] **Step 2:** Add wrong route/level, duplicate identity, short middle range, count mismatch, aggregate definition mismatch and contradictory overlap cases. Test late errors as well as late success. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement per-range ownership plus query/generation/session/token acceptance. Atomically publish a new root; keep at most one coherent stale view. Expiry freezes reads until explicit Refresh; contradiction removes untrustworthy data; auth revocation purges protected state. Clear selection when Refresh/query change starts even if the new token is unchanged. Release replaced sessions best effort.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/session.test.ts src/remote/__tests__/validate-response.test.ts`. Expected: Only current owners publish; independent ranges both succeed; malformed/contradictory responses cannot leak partial state.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: enforce remote session consistency`.
+- [x] **Step 1:** Write A→B→A, same-token different-query, same-range retry and independent out-of-order range cases with deferred promises and an abort-ignoring provider.
+- [x] **Step 2:** Add wrong route/level, duplicate identity, short middle range, count mismatch, aggregate definition mismatch and contradictory overlap cases. Test late errors as well as late success. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement per-range ownership plus query/generation/session/token acceptance. Atomically publish a new root; keep at most one coherent stale view. Expiry freezes reads until explicit Refresh; contradiction removes untrustworthy data; auth revocation purges protected state. Clear selection when Refresh/query change starts even if the new token is unchanged. Release replaced sessions best effort.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/session.test.ts src/remote/__tests__/validate-response.test.ts`. Expected: Only current owners publish; independent ranges both succeed; malformed/contradictory responses cannot leak partial state.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: enforce remote session consistency`.
 
 ### Task 6: Bounded scheduling and retries
 
