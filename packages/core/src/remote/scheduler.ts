@@ -26,8 +26,14 @@ const ranks: Record<RemotePriority, number> = {
   overscan: 2,
   prefetch: 3,
 };
-const cancelled = { ok: false, error: { code: "cancelled" } } as const;
-const timeout = { ok: false, error: { code: "timeout" } } as const;
+const cancelled = Object.freeze({
+  ok: false,
+  error: Object.freeze({ code: "cancelled" }),
+} as const);
+const timeout = Object.freeze({
+  ok: false,
+  error: Object.freeze({ code: "timeout" }),
+} as const);
 type Result = PretableRemoteResult<unknown>;
 
 /** One scheduler per model/controller. Keys are private, not telemetry. Physical
@@ -43,7 +49,7 @@ export function createRemoteScheduler(options: Options = {}) {
   }
   if (deadlineMs > 2_147_483_647) throw new Error("invalid scheduler deadline");
   const clock: RemoteSchedulerClock = options.clock ?? {
-    now: Date.now,
+    now: () => performance.now(),
     setTimeout: (callback, delay) => setTimeout(callback, delay),
     clearTimeout: (handle) =>
       clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -101,7 +107,8 @@ export function createRemoteScheduler(options: Options = {}) {
     if (s.done) return;
     s.done = true;
     // Only physically pending work can have a late authorization result.
-    if (!j.active || !s.demand.onLateResult) removeSubscriber(j, s);
+    if (!j.active || (!s.demand.onLateResult && !s.demand.onDiscardedResult))
+      removeSubscriber(j, s);
     safe(() => s.demand.signal.removeEventListener("abort", s.abort));
     s.resolve(result);
   }
@@ -129,7 +136,8 @@ export function createRemoteScheduler(options: Options = {}) {
     if (j.closed || disposed) safe(() => clock.clearTimeout(handle));
     else j.timers.add(handle);
   }
-  function withinDeadline(j: Job, delay: number, callback: () => void) {
+  function remainingTime(j: Job): number | undefined {
+    if (j.closed || disposed) return;
     let now: number;
     try {
       now = clock.now();
@@ -147,16 +155,26 @@ export function createRemoteScheduler(options: Options = {}) {
       close(j, timeout);
       return;
     }
-    timer(j, Math.min(delay, remaining), callback);
+    return remaining;
+  }
+  function withinDeadline(j: Job, delay: number, callback: () => void) {
+    const remaining = remainingTime(j);
+    if (remaining !== undefined) timer(j, Math.min(delay, remaining), callback);
   }
   function settled(j: Job, raw: unknown) {
+    // Capture request-owned cleanup before normalization/clock callbacks can
+    // reenter disposal. Values are used synchronously, never retained as data.
+    const subscribers = [...j.subscribers];
     const result = validateRemoteResult<unknown>(raw);
-    // Retain the permit through reentrant late-result observers. They may cancel
-    // the remaining subscribers or dispose the scheduler before retry admission.
-    const late = [...j.subscribers].filter((s) => s.done);
-    for (const s of late) removeSubscriber(j, s);
-    for (const s of late)
-      if (!disposed && !result.ok) safe(() => s.demand.onLateResult?.(result));
+    remainingTime(j);
+    // Deadline closure precedes late authority delivery. Keep physical ownership
+    // until these callbacks finish so reentrancy cannot spend this permit twice.
+    for (const s of subscribers) {
+      if (!s.done) continue;
+      removeSubscriber(j, s);
+      if (result.ok) safe(() => s.demand.onDiscardedResult?.(result.value));
+      else if (!disposed) safe(() => s.demand.onLateResult?.(result));
+    }
     j.active = false;
     if (j.closed || disposed) {
       jobs.delete(j);
@@ -193,6 +211,17 @@ export function createRemoteScheduler(options: Options = {}) {
           .filter((candidate) => candidate.ready)
           .sort((a, b) => a.priority - b.priority || a.order - b.order)[0];
         if (!j) break;
+        if (remainingTime(j) === undefined) continue;
+        // The clock may cancel, dispose, or replace demand. Selection and
+        // ownership must still refer to this queued job after that callback.
+        if (
+          disposed ||
+          j.closed ||
+          j.active ||
+          !j.ready ||
+          dedupe.get(j.id) !== j
+        )
+          continue;
         j.active = true;
         j.attempts++;
         let result: Promise<Result>;

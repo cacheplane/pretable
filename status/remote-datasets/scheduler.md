@@ -43,7 +43,9 @@ Defaults (explicit positive integer overrides are available):
 - 256 subscriber records, including cancelled records awaiting late authority.
   This provisional composition limit is separate from the job limits.
 - One 30-second deadline per job, measured from first admission, across queue
-  delay, invocation, and retries. Configured deadlines cannot exceed the native
+  delay, invocation, and retries. Dispatch and settlement independently check the
+  absolute deadline, so delayed timer delivery cannot admit late work or success.
+  Configured deadlines cannot exceed the native
   timer maximum of 2,147,483,647 milliseconds.
 
 Only normalized `transient` failures retry, with at most three attempts total.
@@ -91,6 +93,12 @@ Abandoned successful opens need resource cleanup even after scheduler disposal.
 That cleanup belongs to the guarded physical provider call: it validates and
 releases the returned session if the signal is aborted or request ownership was
 lost, then returns cancelled so the regular acceptance path cannot double-release.
+When settlement first discovers a deadline after the guarded open has already
+returned, a separate request-owned `onDiscardedResult` hook validates and releases
+that abandoned session. It is cleanup only and never publishes data or feeds the
+authorization path. Settlement captures this cleanup before reentrant clock calls,
+so disposal inside that boundary cannot lose the resource. Returned values are
+not retained in scheduler state.
 
 Dispose the session controller and scheduler together. Scheduler disposal clears
 queued ownership, subscriber listeners/hooks, dedupe entries, and timers, aborts
@@ -98,7 +106,11 @@ physical signals, and rejects new work. Still-unsettled physical promises remain
 visible in active/stalled counts until they settle. Late hooks do not fire after
 disposal. No disposed scheduler can force a noncooperative provider to settle.
 
-Clock and timer operations are injectable. Tests use deterministic fake time with
+Clock and timer operations are injectable. The default elapsed clock is monotonic
+`performance.now()`. Provider session `expiresAt` remains epoch-based in the
+session controller; Task 8 must not compare that timestamp to the scheduler's
+elapsed-clock origin. Shared cancelled/timeout diagnostics and their nested error
+objects are frozen. Tests use deterministic fake time with
 no real sleeps. External observer errors are isolated; ownership is checked again
 after reentrant clock/abort boundaries. There is no callback priority resolver;
 priorities are explicit values.

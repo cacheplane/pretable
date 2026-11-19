@@ -517,3 +517,155 @@ it("assigns root reads the focused priority tier", async () => {
   await Promise.all([root, visible]);
   expect(order).toEqual(["root", "visible"]);
 });
+
+describe("absolute deadlines when timer delivery is delayed", () => {
+  function clock() {
+    let time = 0;
+    let onNow = () => {};
+    return {
+      setTime: (value: number) => {
+        time = value;
+      },
+      setOnNow: (callback: () => void) => {
+        onNow = callback;
+      },
+      now: () => {
+        onNow();
+        return time;
+      },
+      setTimeout: (_callback: () => void, _delay: number) => ({}),
+      clearTimeout: (_handle: unknown) => {},
+    };
+  }
+  it("times out an active success and never invokes expired queued demand", async () => {
+    const c = clock();
+    const s = createRemoteScheduler({ maxActive: 1, clock: c });
+    const d = deferred();
+    const active = s.schedule(demand("active"), () => d.promise);
+    const run = vi.fn(async () => ok);
+    const queued = s.schedule(demand("queued"), run);
+    c.setTime(30_001);
+    d.resolve(ok);
+    await tick();
+    expect(await active).toEqual({ ok: false, error: { code: "timeout" } });
+    expect(await queued).toEqual({ ok: false, error: { code: "timeout" } });
+    expect(run).not.toHaveBeenCalled();
+    expect(s.getSnapshot()).toMatchObject({ active: 0, queued: 0, timers: 0 });
+  });
+  it("preserves session revocation when settlement first detects timeout", async () => {
+    const c = clock();
+    const s = createRemoteScheduler({ clock: c });
+    const f = createDeferredProvider<Row, Columns>(capabilities);
+    const results: PretableRemoteResult<unknown>[] = [];
+    const controller = createRemoteSessionController(f.provider, {
+      rootRangeSize: 2,
+      invoke: async (operation, run) => {
+        const result = await s.schedule(operation, run);
+        results.push(result);
+        return result;
+      },
+    });
+    const ready = controller.setQuery(query);
+    f.opens[0]!.resolve({
+      ok: true,
+      value: { ...session, queryKey: f.opens[0]!.request.queryKey },
+    });
+    await tick();
+    f.reads[0]!.resolve({
+      ok: true,
+      value: { ...range(0, 2), ...f.reads[0]!.request },
+    });
+    await ready;
+    const pending = controller.read([], 2, 4);
+    c.setTime(30_001);
+    f.reads[1]!.resolve({
+      ok: false,
+      error: { code: "unauthorized", scope: "session" },
+    });
+    await pending;
+    expect(results.at(-1)).toEqual({ ok: false, error: { code: "timeout" } });
+    expect(controller.getSnapshot().error).toEqual({
+      code: "unauthorized",
+      scope: "session",
+    });
+    expect(controller.getSnapshot().view).toBeUndefined();
+    expect(f.reads[1]!.signal.aborted).toBe(true);
+    controller.dispose();
+    s.dispose();
+  });
+  it("rechecks ownership after dispatch deadline clock reenters disposal", async () => {
+    const c = clock();
+    const s = createRemoteScheduler({ maxActive: 1, clock: c });
+    const d = deferred();
+    void s.schedule(demand("active"), () => d.promise);
+    const run = vi.fn(async () => ok);
+    const queued = s.schedule(demand("queued"), run);
+    let calls = 0;
+    c.setOnNow(() => {
+      if (++calls === 2) s.dispose();
+    });
+    d.resolve(ok);
+    await tick();
+    expect(run).not.toHaveBeenCalled();
+    expect(await queued).toEqual({ ok: false, error: { code: "cancelled" } });
+    expect(s.getSnapshot()).toMatchObject({ disposed: true, active: 0 });
+  });
+  it("rechecks settlement ownership when its deadline clock disposes", async () => {
+    const c = clock();
+    const s = createRemoteScheduler({ clock: c });
+    const d = deferred();
+    const pending = s.schedule(demand("active"), () => d.promise);
+    c.setOnNow(() => s.dispose());
+    d.resolve(ok);
+    await tick();
+    expect(await pending).toEqual({ ok: false, error: { code: "cancelled" } });
+    expect(s.getSnapshot()).toMatchObject({
+      disposed: true,
+      active: 0,
+      subscribers: 0,
+    });
+  });
+  it.each(["delayed-timeout", "disposed", "reentrant-disposal"] as const)(
+    "releases an abandoned successful open after %s",
+    async (mode) => {
+      const c = clock();
+      const s = createRemoteScheduler({ clock: c });
+      const f = createDeferredProvider<Row, Columns>(capabilities);
+      const controller = createRemoteSessionController(f.provider, {
+        rootRangeSize: 2,
+        invoke: s.schedule,
+      });
+      const pending = controller.setQuery(query);
+      if (mode === "disposed") {
+        controller.dispose();
+        s.dispose();
+      } else if (mode === "reentrant-disposal") c.setOnNow(() => s.dispose());
+      else c.setTime(30_001);
+      f.opens[0]!.resolve({
+        ok: true,
+        value: { ...session, queryKey: f.opens[0]!.request.queryKey },
+      });
+      await pending;
+      await tick();
+      expect(f.released).toHaveLength(1);
+      expect(f.reads).toHaveLength(0);
+      expect(s.getSnapshot()).toMatchObject({ active: 0, subscribers: 0 });
+    },
+  );
+  it("does not expose mutable shared cancellation or timeout errors", async () => {
+    const s = createRemoteScheduler();
+    s.dispose();
+    const result = await s.schedule(demand("cancel"), async () => ok);
+    expect(Object.isFrozen(result)).toBe(true);
+    if (!result.ok) expect(Object.isFrozen(result.error)).toBe(true);
+    const c = clock();
+    const other = createRemoteScheduler({ clock: c });
+    const d = deferred();
+    const p = other.schedule(demand("timeout"), () => d.promise);
+    c.setTime(30_001);
+    d.resolve(ok);
+    const timed = await p;
+    expect(Object.isFrozen(timed)).toBe(true);
+    if (!timed.ok) expect(Object.isFrozen(timed.error)).toBe(true);
+  });
+});

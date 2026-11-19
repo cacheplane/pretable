@@ -34,6 +34,8 @@ export interface RemoteInvocation {
   readonly root?: boolean;
   /** Scheduler-only normalized failures after caller settlement; acceptance permits only scoped revocation. */
   readonly onLateResult?: (result: PretableRemoteResult<unknown>) => void;
+  /** Resource cleanup only, never data acceptance. Used for discarded opens. */
+  readonly onDiscardedResult?: (value: unknown) => void;
 }
 export interface RemoteLifecycleReset {
   readonly generation: number;
@@ -250,6 +252,17 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
               generation: c.generation,
               key,
               signal: owner.signal,
+              ...(kind === "open"
+                ? {
+                    onDiscardedResult: (value: unknown) => {
+                      const abandoned = validateSession(
+                        value as PretableRemoteSession,
+                        c.queryKey,
+                      );
+                      if (abandoned.ok) release(abandoned.value);
+                    },
+                  }
+                : {}),
               onLateResult: (result) => {
                 acceptRevocation(c, owner, validateRemoteResult(result));
               },
