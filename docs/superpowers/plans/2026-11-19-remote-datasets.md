@@ -191,7 +191,17 @@ All 235 remote tests passed; independent cache/sparse verification passed 27 tes
 Core build/typecheck/lint passed. Controller composition remains Task 8; no complete
 controller memory or quiet-machine performance claim is made.
 
-Task 8 is in progress.
+Task 8 complete through `7b6f8bb2`: specification and quality reviews passed.
+The public headless remote model composes accepted sessions, scheduler ingress,
+cache admission, sparse groups and versioned summaries. Review regressions fixed
+refused-summary retry, viewport metadata atomicity, bootstrap-root cancellation,
+and replay ownership across loading, unchanged queries and rejected commands.
+Fresh independent verification passed all 302 core tests, typecheck and lint;
+285 tests cover remote behavior. Public build, API and consumer checks passed.
+Original windowing runtime remains unchanged. Layout/browser/performance release
+gates remain open; this is not a completed remote grid release.
+
+Task 9 is in progress.
 
 ## Tasks
 
@@ -269,11 +279,11 @@ Task 8 is in progress.
 
 **Files:** Create `packages/core/src/remote/create-remote-model.ts`, `summaries.ts`, `__tests__/model.test.ts`, `__tests__/summaries.test.ts`; modify `packages/core/src/public_api.ts`.
 
-- [ ] **Step 1:** Write headless consumer tests that subscribe, change query, expand, demand a viewport, retry and dispose. Assert synchronous reads dispatch no network work.
-- [ ] **Step 2:** Cover filtered versus all-scope keyed totals, unsupported same-version base summary, stale answers, failed aggregates, width-only changes and definition changes. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Compose session, scheduler, cache and index with immutable publication and explicit lifecycle. Preserve 0.21.0 summary provenance and aggregateDefinitionKey; never compute server totals from cached pages. Export unavailable/error distinctly from zero. Expose counters and loaded-entry iteration without scanning the logical extent.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/model.test.ts src/remote/__tests__/summaries.test.ts`. Expected: Headless browsing works with the reference fixture, all summary scopes stay coherent, and disposal cannot publish or retain controller history.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: compose remote read model and summaries`.
+- [x] **Step 1:** Write headless consumer tests that subscribe, change query, expand, demand a viewport, retry and dispose. Assert synchronous reads dispatch no network work.
+- [x] **Step 2:** Cover filtered versus all-scope keyed totals, unsupported same-version base summary, stale answers, failed aggregates, width-only changes and definition changes. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Compose session, scheduler, cache and index with immutable publication and explicit lifecycle. Preserve 0.21.0 summary provenance and aggregateDefinitionKey; never compute server totals from cached pages. Export unavailable/error distinctly from zero. Expose counters and loaded-entry iteration without scanning the logical extent.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/model.test.ts src/remote/__tests__/summaries.test.ts`. Expected: Headless browsing works with the reference fixture, all summary scopes stay coherent, and disposal cannot publish or retain controller history.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: compose remote read model and summaries`.
 
 ### Task 9: Shared layout adapter without manual regressions
 
