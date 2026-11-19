@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { remoteAggregateDefinitionKey, remoteGroupId } from "../query";
-import { createResponseValidator, validateSession } from "../validate-response";
+import {
+  createResponseValidator,
+  validateSession,
+  validateRemoteResult,
+} from "../validate-response";
 import type { PretableRemoteGroup, PretableRemoteRange } from "../types";
 import {
   query,
@@ -283,5 +287,40 @@ describe("response validation", () => {
         aggregateIds: ["second", "sum"],
       }).ok,
     ).toBe(true);
+  });
+  it("copies only the shallow success envelope without traversing payload", () => {
+    let traversals = 0;
+    const payload = Object.defineProperty({}, "row", {
+      enumerable: true,
+      get() {
+        traversals++;
+        throw new Error("payload accessor");
+      },
+    });
+    const input = { ok: true, value: payload };
+    const output = validateRemoteResult(input);
+    expect(output).not.toBe(input);
+    expect(output.ok).toBe(true);
+    if (output.ok) expect(output.value).toBe(payload);
+    expect(traversals).toBe(0);
+  });
+  it("rejects hidden, symbol, unknown and missing envelope fields", () => {
+    const hidden = Object.defineProperty({ ok: true }, "value", {
+      value: {},
+      enumerable: false,
+    });
+    for (const input of [
+      hidden,
+      { ok: true, value: {}, [Symbol("unknown")]: 1 },
+      { ok: true, value: {}, extra: 1 },
+      { ok: true },
+      { ok: false, error: { code: "transient" }, value: {} },
+      Object.create({ ok: true, value: {} }),
+    ]) {
+      expect(validateRemoteResult(input)).toEqual({
+        ok: false,
+        error: { code: "invalid-response" },
+      });
+    }
   });
 });

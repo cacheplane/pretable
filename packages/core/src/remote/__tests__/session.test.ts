@@ -11,7 +11,11 @@ import {
   type Row,
   type Columns,
 } from "./fixtures/responses";
-import type { PretableRemoteError, PretableRemoteQuery } from "../types";
+import type {
+  PretableRemoteError,
+  PretableRemoteQuery,
+  PretableRemoteResult,
+} from "../types";
 
 const tick = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
@@ -817,5 +821,94 @@ describe("remote session ownership", () => {
     await retry;
     await older;
     expect(c.getSnapshot().view?.ranges.map((r) => r.start)).toEqual([0, 2]);
+  });
+  it.each(
+    ["open", "read", "summary"].flatMap((operation) =>
+      ["ok", "value", "error", "error.code"].flatMap((field) =>
+        ["throw", "toggle"].map((behavior) => ({ operation, field, behavior })),
+      ),
+    ),
+  )(
+    "rejects $behavior $field accessor on $operation without executing it",
+    async ({ operation, field, behavior }) => {
+      const f = setup();
+      if (operation !== "open") await f.ready();
+      let calls = 0;
+      const getter = () => {
+        calls++;
+        if (behavior === "throw") throw new Error("private accessor");
+        return calls % 2 === 1;
+      };
+      const envelope: Record<string, unknown> =
+        field === "error" || field === "error.code"
+          ? { ok: false, error: { code: "transient" } }
+          : { ok: true, value: session };
+      if (field === "error.code")
+        Object.defineProperty(envelope.error, "code", {
+          enumerable: true,
+          get: getter,
+        });
+      else
+        Object.defineProperty(envelope, field, {
+          enumerable: true,
+          get: getter,
+        });
+      if (operation === "open")
+        f.provider.open = async () =>
+          envelope as unknown as PretableRemoteResult<typeof session>;
+      else if (operation === "read")
+        f.provider.read = async () =>
+          envelope as unknown as PretableRemoteResult<ReturnType<typeof range>>;
+      else
+        f.provider.summary = async () =>
+          envelope as unknown as PretableRemoteResult<
+            ReturnType<typeof summary>
+          >;
+      const command =
+        operation === "open"
+          ? f.controller.setQuery(query)
+          : operation === "read"
+            ? f.controller.read([], 2, 4)
+            : f.controller.summary("filtered");
+      await expect(command).resolves.toBeUndefined();
+      expect(calls).toBe(0);
+      expect(f.controller.getSnapshot().error?.code).toBe("invalid-response");
+      expect(f.controller.getSnapshot().state).toBe(
+        operation === "open" ? "error" : "ready",
+      );
+    },
+  );
+  it("classifies rejected provider invocation as transient separately from malformed envelopes", async () => {
+    const f = setup();
+    f.provider.open = async () => {
+      throw new Error("transport failed");
+    };
+    await f.controller.setQuery(query);
+    expect(f.controller.getSnapshot().error?.code).toBe("transient");
+  });
+  it("normalizes provider envelopes before the scheduler invocation inspects retry diagnostics", async () => {
+    const f = setup();
+    let calls = 0;
+    const observed: string[] = [];
+    const envelope = Object.defineProperty({ value: session }, "ok", {
+      enumerable: true,
+      get() {
+        calls++;
+        throw new Error("private accessor");
+      },
+    });
+    f.provider.open = async () =>
+      envelope as unknown as PretableRemoteResult<typeof session>;
+    const c = createRemoteSessionController(f.provider, {
+      invoke: async (_operation, run) => {
+        const response = await run();
+        observed.push(response.ok ? "ready" : response.error.code);
+        return response;
+      },
+    });
+    await c.setQuery(query);
+    expect(calls).toBe(0);
+    expect(observed).toEqual(["invalid-response"]);
+    expect(c.getSnapshot().error?.code).toBe("invalid-response");
   });
 });

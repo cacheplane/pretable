@@ -4,7 +4,7 @@ import {
   rangeAddress,
   snapshotWire,
   validateSession,
-  validRemoteError,
+  validateRemoteResult,
 } from "./validate-response";
 import type {
   PretableRemoteError,
@@ -21,7 +21,9 @@ import type {
 
 /** Internal composition boundary. The scheduler owns permits/retries; this
  * controller only owns acceptance. An invocation must settle after cancellation.
- * The callback checks ownership again when a queued permit eventually runs. */
+ * The callback checks ownership again when a queued permit eventually runs and
+ * returns descriptor-validated envelopes so retry logic never reads raw provider
+ * accessors. Success payload validation remains the acceptance layer's job. */
 export interface RemoteInvocation {
   readonly kind: "open" | "read" | "summary";
   readonly generation: number;
@@ -200,34 +202,33 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     kind: RemoteInvocation["kind"],
     run: () => Promise<PretableRemoteResult<T>>,
   ): Promise<PretableRemoteResult<T>> {
-    const guarded = () => {
+    const guarded = async (): Promise<PretableRemoteResult<T>> => {
       if (!owns(c, key, owner) || expired(c) || !owns(c, key, owner))
         return Promise.resolve<PretableRemoteResult<T>>({
           ok: false,
           error: { code: "cancelled" },
         });
       invoked.add(owner);
-      return run();
+      let raw: unknown;
+      try {
+        raw = await run();
+      } catch {
+        return { ok: false, error: { code: "transient" } };
+      }
+      return validateRemoteResult<T>(raw);
     };
+    let answer: unknown;
     try {
-      const answer = await (options.invoke
+      answer = await (options.invoke
         ? options.invoke(
             { kind, generation: c.generation, key, signal: owner.signal },
             guarded,
           )
         : guarded());
-      if (
-        !answer ||
-        typeof answer.ok !== "boolean" ||
-        (!answer.ok && !validRemoteError(answer.error))
-      )
-        return { ok: false, error: { code: "invalid-response" } };
-      return answer.ok
-        ? answer
-        : { ok: false, error: snapshotWire(answer.error) };
     } catch {
       return { ok: false, error: { code: "transient" } };
     }
+    return validateRemoteResult<T>(answer);
   }
   /** Session-wide authorization has broader authority than a range attempt.
    * Only actually invoked requests can revoke their current context, even after

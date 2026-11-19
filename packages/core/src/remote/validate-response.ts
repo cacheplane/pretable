@@ -77,6 +77,41 @@ export function snapshotWire<T>(value: T): T {
   }
   return copy(value, 0) as T;
 }
+/** Validate the transport envelope without reading accessors or traversing a
+ * successful payload. Payload validation makes the one owned deep snapshot later.
+ * Error snapshots are made before any diagnostic fields are inspected. */
+export function validateRemoteResult<T>(
+  input: unknown,
+): PretableRemoteResult<T> {
+  try {
+    check(
+      input &&
+        typeof input === "object" &&
+        Object.getPrototypeOf(input) === Object.prototype,
+    );
+    const descriptors = new Map<string, PropertyDescriptor>();
+    for (const key of Reflect.ownKeys(input)) {
+      check(typeof key === "string" && ["ok", "value", "error"].includes(key));
+      const descriptor = Object.getOwnPropertyDescriptor(input, key);
+      check(descriptor && descriptor.enumerable && "value" in descriptor);
+      descriptors.set(key, descriptor);
+    }
+    const ok = descriptors.get("ok")?.value;
+    check(typeof ok === "boolean" && descriptors.size === 2);
+    if (ok) {
+      check(descriptors.has("value"));
+      return { ok: true, value: descriptors.get("value")!.value as T };
+    }
+    check(descriptors.has("error"));
+    const error = snapshotWire(
+      descriptors.get("error")!.value as PretableRemoteError,
+    );
+    check(validRemoteError(error));
+    return { ok: false, error };
+  } catch {
+    return { ok: false, error: { code: "invalid-response" } };
+  }
+}
 // Typed encoding of already-validated snapshots: order-insensitive objects,
 // distinct missing/undefined and -0/0. Never used as an externally logged key.
 function signature(v: unknown): string {
