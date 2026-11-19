@@ -97,6 +97,12 @@ Disposal releases all admitted bodies immediately, but physical ingress/request
 charges may remain until ignored-abort transports settle. Abandoned opens retain
 the existing best-effort provider resource finalizer.
 
+Viewport metadata and prospective payload protections are admitted before the
+new demand map replaces its predecessor or cancels prior requests. Refusal keeps
+the prior admitted demand intact and retains only a fixed-size pair of display
+ranks to suppress identical rejected telemetry. Explicit Retry can attempt that
+refused viewport again.
+
 Capacity is a model-only, value-free diagnostic, separate from provider protocol
 errors and transient retry policy. Refusal does not retain candidate evidence or
 refetch on identical viewport telemetry. Unrelated subscription changes do not
@@ -112,7 +118,10 @@ copies can coexist transiently inside the ingress boundary.
 
 `requestSummary("filtered" | "all")` requests accepted-version server totals.
 `getSnapshot().getSummary(scope)` returns explicit ready, unavailable, loading or
-error state. Ready summaries preserve scope, session/query/result identity,
+error state. Locally refused summaries retain only their bounded scope markers,
+so explicit Retry can retry those requests without requesting unsupported or
+unrelated scopes. Retry publishes cleared capacity consistently in immutable
+snapshots and diagnostics, including ready empty datasets. Ready summaries preserve scope, session/query/result identity,
 registry version, aggregate keys, `aggregateDefinitionKey`, completeness and
 server authority. A ready summary may contain an individually failed aggregate;
 neither failed nor unavailable values become zero. Numeric zero remains a ready
@@ -144,8 +153,8 @@ not claim a completed remote grid feature or unlimited browser scroll height.
 Verified with Node 24.20.0 and pnpm 10.12.1:
 
 - `pnpm --filter @pretable/core test src/remote/__tests__ --maxWorkers=1`:
-  272 tests passed across nine files, including all 235 pre-Task-8 remote tests.
-- `pnpm --filter @pretable/core test --maxWorkers=1`: 289 tests passed across
+  274 tests passed across nine files, including all 235 pre-Task-8 remote tests.
+- `pnpm --filter @pretable/core test --maxWorkers=1`: 291 tests passed across
   thirteen files, including the unchanged local core tests.
 - Core `typecheck`, `lint`, `build` and `api:check`: passed.
 - `tsc -p type-tests/tsconfig.json --noEmit` and

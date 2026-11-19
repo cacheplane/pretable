@@ -649,3 +649,74 @@ it("restarts when a rejected query is corrected back to the prior valid query", 
   expect(f.model.getSnapshot().status.state).toBe("ready");
   f.model.dispose();
 });
+
+it("retries only locally refused summaries and publishes cleared capacity, including empty roots", async () => {
+  let refuse = true;
+  const f = setup({
+    estimateResponseBytes: (value) => {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        "scope" in value &&
+        refuse
+      )
+        throw new Error("size");
+      return 100;
+    },
+  });
+  await f.ready(query, 0);
+  const respond = (index: number) => {
+    const request = f.summaries[index]!.request;
+    f.summaries[index]!.resolve({
+      ok: true,
+      value: {
+        ...request.session,
+        scope: request.scope,
+        registryVersion: "1",
+        aggregateIds: [],
+        authority: "server",
+        completeness: "complete",
+        values: {},
+      },
+    });
+  };
+  const first = f.model.requestSummary("filtered");
+  respond(0);
+  await first;
+  expect(f.model.getSnapshot().getSummary("filtered").state).toBe(
+    "unavailable",
+  );
+  expect(f.model.getSnapshot().capacity).toBe("invalid-cost");
+  refuse = false;
+  const retry = f.model.retry();
+  expect(f.summaries).toHaveLength(2);
+  expect(f.summaries[1]!.request.scope).toBe("filtered");
+  expect(f.model.getSnapshot().capacity).toBeUndefined();
+  expect(f.model.getDiagnostics().capacity).toBeUndefined();
+  respond(1);
+  await retry;
+  expect(f.model.getSnapshot().getSummary("filtered").state).toBe("ready");
+  expect(f.opens).toHaveLength(1);
+  await f.model.retry();
+  expect(f.summaries).toHaveLength(2);
+  f.model.dispose();
+});
+
+it("refuses viewport metadata atomically while retaining prior admitted demand", async () => {
+  const f = setup({ limits: { metadataBytes: 20_000 } });
+  await f.ready(query, 1000);
+  const old = f.model.demandViewport({ start: 2, end: 4 });
+  expect(f.reads).toHaveLength(2);
+  const metadata = f.model.getDiagnostics().metadataBytes;
+  await f.model.demandViewport({ start: 100, end: 228 });
+  expect(f.model.getDiagnostics().capacity).toBeDefined();
+  expect(f.model.getDiagnostics().metadataBytes).toBe(metadata);
+  expect(f.reads[1]!.signal.aborted).toBe(false);
+  expect(f.model.readSlot(2)?.kind).toBe("loading");
+  await f.model.demandViewport({ start: 100, end: 228 });
+  expect(f.reads).toHaveLength(2);
+  await f.read(1);
+  await old;
+  expect(f.model.readSlot(2)?.kind).toBe("loaded");
+  f.model.dispose();
+});

@@ -73,14 +73,6 @@ export class ModelRetention<TRow extends object> {
     this.cache.drop(-1, key);
     this.records.delete(this.id({ scope: -1, key }));
   }
-  protect(wanted: ReadonlySet<string>) {
-    for (const [key, record] of this.records) {
-      if (record.kind !== "payload") continue;
-      const protect = record.scope === this.visible && wanted.has(record.key);
-      this.cache.protect(record.scope, record.key, protect);
-      this.records.set(key, { ...record, protected: protect });
-    }
-  }
   ranges(scope = this.visible): PretableRemoteRange<TRow>[] {
     return [...this.records.values()]
       .filter((r) => r.scope === scope && r.kind === "payload")
@@ -92,6 +84,7 @@ export class ModelRetention<TRow extends object> {
     root?: boolean;
     expectedEpoch?: number;
     expanded?: Set<string>;
+    protectedRanges?: ReadonlySet<string>;
   }) {
     const expectedEpoch = input.expectedEpoch ?? this.cache.snapshot().epoch;
     if (expectedEpoch !== this.cache.snapshot().epoch) {
@@ -99,6 +92,14 @@ export class ModelRetention<TRow extends object> {
       return;
     }
     const candidate = new Map(this.records);
+    if (input.protectedRanges) {
+      for (const [key, record] of candidate)
+        if (record.kind === "payload" && record.scope === this.visible)
+          candidate.set(key, {
+            ...record,
+            protected: input.protectedRanges.has(record.key),
+          });
+    }
     const releaseScopes = input.root
       ? [...this.scopes].filter((scope) => scope !== this.current)
       : [];
