@@ -1098,6 +1098,10 @@ export interface PretableRemoteCapabilities {
     readonly rangeAccess: "ordinal";
     // (undocumented)
     readonly search: boolean;
+    readonly summaries: {
+        readonly filtered: "same-version" | "unavailable";
+        readonly all: "same-version" | "unavailable";
+    };
 }
 
 // @public

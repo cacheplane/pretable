@@ -75,6 +75,12 @@ export interface PretableRemoteCapabilities {
   readonly comparisons: readonly string[];
   readonly aggregates: readonly string[];
   readonly search: boolean;
+  /** All-scope means the authorized base dataset at the accepted result version.
+   * Unavailable scopes must not fall back to latest data or cached page totals. */
+  readonly summaries: {
+    readonly filtered: "same-version" | "unavailable";
+    readonly all: "same-version" | "unavailable";
+  };
   readonly maxGroupDepth: number;
   readonly maxRangeSize: number;
 }

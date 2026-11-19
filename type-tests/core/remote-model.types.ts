@@ -53,3 +53,14 @@ const badGroups: PretableRemoteQuery<typeof columns>["rowGroups"] = [
   { columnId: "name", direction: "desc" },
 ];
 void badGroups;
+
+const summaryCapability: typeof provider.capabilities.summaries = {
+  filtered: "same-version",
+  all: "unavailable",
+};
+const invalidSummaryCapability: typeof provider.capabilities.summaries = {
+  filtered: "same-version",
+  // @ts-expect-error latest-version totals cannot be advertised as compatible
+  all: "latest",
+};
+void [summaryCapability, invalidSummaryCapability];

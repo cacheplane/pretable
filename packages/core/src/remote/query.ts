@@ -5,6 +5,21 @@ import type {
   PretableRemoteRoute,
 } from "./types";
 
+const operatorsByType: Record<string, readonly string[]> = {
+  text: [
+    "equals",
+    "notEquals",
+    "contains",
+    "notContains",
+    "startsWith",
+    "endsWith",
+  ],
+  number: ["equals", "notEquals", "gt", "gte", "lt", "lte", "between"],
+  date: ["on", "before", "after", "dateBetween"],
+  enum: ["isAnyOf", "isNoneOf"],
+  boolean: ["isAnyOf", "isNoneOf"],
+};
+
 function invalid(): never {
   throw new Error("invalid-query");
 }
@@ -24,15 +39,39 @@ function object(
     invalid();
   const record = value as Record<string, unknown>;
   if (
-    Reflect.ownKeys(record).some(
-      (key) => typeof key !== "string" || !allowed.includes(key),
-    )
+    Reflect.ownKeys(record).some((key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(record, key)!;
+      return (
+        typeof key !== "string" ||
+        !allowed.includes(key) ||
+        !descriptor.enumerable ||
+        !("value" in descriptor)
+      );
+    })
   )
     invalid();
   return record;
 }
 function array(value: unknown): readonly unknown[] {
-  if (!Array.isArray(value)) invalid();
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    value.length > 10000
+  )
+    invalid();
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== value.length + 1) invalid();
+  for (const key of keys) {
+    if (key === "length") continue;
+    if (
+      typeof key !== "string" ||
+      !/^(0|[1-9]\d*)$/.test(key) ||
+      Number(key) >= value.length
+    )
+      invalid();
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if (!descriptor.enumerable || !("value" in descriptor)) invalid();
+  }
   return value;
 }
 function text(value: unknown): string {
@@ -71,8 +110,7 @@ function canonical(
   seen.add(value);
   let result: string;
   if (Array.isArray(value)) {
-    if (value.length > 10000 || Object.keys(value).length !== value.length)
-      invalid();
+    array(value);
     result = `[${value.map((item) => canonical(item, seen, depth + 1)).join(",")}]`;
   } else {
     const record = object(value, Object.keys(value));
@@ -107,12 +145,43 @@ export function remoteLeafId(id: string | number): string {
   if (typeof id !== "string" && typeof id !== "number") invalid();
   return `leaf:${scalar(id)}`;
 }
+function validateCapabilities(value: PretableRemoteCapabilities): void {
+  canonical(value);
+  const c = object(value, [
+    "rangeAccess",
+    "exactCounts",
+    "consistency",
+    "fields",
+    "comparisons",
+    "aggregates",
+    "search",
+    "maxGroupDepth",
+    "maxRangeSize",
+    "summaries",
+  ]);
+  if (typeof c.search !== "boolean") invalid();
+  array(c.comparisons).forEach(text);
+  array(c.aggregates).forEach(text);
+  const fields = object(c.fields, Object.keys(c.fields as object));
+  for (const [id, definition] of Object.entries(fields)) {
+    text(id);
+    const field = object(definition, ["type", "operators"]);
+    const type = member(field.type, Object.keys(operatorsByType));
+    array(field.operators).forEach((op) =>
+      member(op, ["isEmpty", "isNotEmpty", ...operatorsByType[type]!]),
+    );
+  }
+  const summaries = object(c.summaries, ["filtered", "all"]);
+  member(summaries.filtered, ["same-version", "unavailable"]);
+  member(summaries.all, ["same-version", "unavailable"]);
+}
 /** Validate before provider invocation. No query values are included in diagnostics. @public */
 export function prepareRemoteQuery<TColumns>(
   query: PretableRemoteQuery<TColumns>,
   capabilities: PretableRemoteCapabilities,
 ): PretableRemotePreparedQuery {
   try {
+    validateCapabilities(capabilities);
     // Validate serializability before recursively visiting filters.
     const queryKey = canonical(query);
     const q = object(query, [
@@ -170,24 +239,11 @@ export function prepareRemoteQuery<TColumns>(
       }
       object(f, ["columnId", "operator", "value"]);
       const definition = field(f.columnId);
-      const ops: Record<string, readonly string[]> = {
-        text: [
-          "equals",
-          "notEquals",
-          "contains",
-          "notContains",
-          "startsWith",
-          "endsWith",
-        ],
-        number: ["equals", "notEquals", "gt", "gte", "lt", "lte", "between"],
-        date: ["on", "before", "after", "dateBetween"],
-        enum: ["isAnyOf", "isNoneOf"],
-        boolean: ["isAnyOf", "isNoneOf"],
-      };
+
       const op = member(f.operator, [
         "isEmpty",
         "isNotEmpty",
-        ...(ops[definition.type] ?? []),
+        ...(operatorsByType[definition.type] ?? []),
       ]);
       member(op, definition.operators);
       if (op === "isEmpty" || op === "isNotEmpty") {

@@ -22,6 +22,7 @@ const capabilities: PretableRemoteCapabilities = {
   aggregates: ["sum@1"],
   comparisons: ["binary@1", "binary@2"],
   search: true,
+  summaries: { filtered: "same-version", all: "unavailable" },
   maxGroupDepth: 4,
   maxRangeSize: 100,
 };
@@ -226,5 +227,89 @@ describe("remote query identity", () => {
       canonicalRemoteRoute([{ columnId: "name", key: NaN }]),
     ).toThrow();
     expect(() => remoteLeafId(undefined as never)).toThrow();
+  });
+});
+
+describe("remote runtime data boundaries", () => {
+  it.each([
+    { comparisons: "binary@123" },
+    { aggregates: "sum@1" },
+    { comparisons: [1] },
+    {
+      fields: {
+        name: { type: "bogus", operators: [] },
+        amount: capabilities.fields.amount,
+      },
+    },
+    {
+      fields: {
+        name: { type: "text", operators: "equals" },
+        amount: capabilities.fields.amount,
+      },
+    },
+    {
+      fields: {
+        name: { type: "text", operators: ["gt"] },
+        amount: capabilities.fields.amount,
+      },
+    },
+    { search: "false" },
+    { summaries: { filtered: "same-version", all: true } },
+  ])("rejects malformed capabilities %j", (change) => {
+    expect(
+      prepareRemoteQuery({ ...query, search: "needle" }, {
+        ...capabilities,
+        ...change,
+      } as unknown as PretableRemoteCapabilities).ok,
+    ).toBe(false);
+  });
+  it.each(["symbol", "hidden", "accessor", "subclass"])(
+    "rejects %s array properties",
+    (kind) => {
+      const projection = ["name", "amount"];
+      if (kind === "symbol")
+        Object.defineProperty(projection, Symbol("extra"), { value: 1 });
+      if (kind === "hidden")
+        Object.defineProperty(projection, "extra", { value: 1 });
+      if (kind === "accessor")
+        Object.defineProperty(projection, "0", {
+          get: () => "name",
+          enumerable: true,
+        });
+      if (kind === "subclass")
+        Object.setPrototypeOf(projection, Object.create(Array.prototype));
+      expect(
+        prepareRemoteQuery(
+          { ...query, projection } as PretableRemoteQuery<Columns>,
+          capabilities,
+        ).ok,
+      ).toBe(false);
+    },
+  );
+  it("rejects query accessors without invoking them", () => {
+    let reads = 0;
+    const hostile = { ...query };
+    Object.defineProperty(hostile, "source", {
+      get: () => {
+        reads++;
+        return "orders";
+      },
+      enumerable: true,
+    });
+    expect(prepareRemoteQuery(hostile, capabilities).ok).toBe(false);
+    expect(reads).toBe(0);
+  });
+  it("rejects hidden known query fields", () => {
+    const hostile = { ...query };
+    Object.defineProperty(hostile, "source", {
+      value: "orders",
+      enumerable: false,
+    });
+    expect(prepareRemoteQuery(hostile, capabilities).ok).toBe(false);
+  });
+  it("rejects malformed route arrays before mapping them", () => {
+    const route: [] = [];
+    Object.defineProperty(route, "extra", { value: 1 });
+    expect(() => canonicalRemoteRoute(route)).toThrow();
   });
 });
