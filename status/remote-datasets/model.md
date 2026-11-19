@@ -15,7 +15,14 @@ render. Reads use aligned, nonoverlapping blocks, defaulting to the smaller of
 100 siblings and the provider limit, with a supported maximum of 1,000. A viewport
 may demand at most 64 aligned blocks and 64 block-widths of display ranks. It
 cancels obsolete range owners, deduplicates unchanged demand and protects its
-resident working set. The scheduler keeps its reviewed four-physical/64-queued/
+resident working set. Bootstrap roots belong to the session, so ordinary viewport
+or collapse cancellation cannot abort them; actual query replacement and disposal
+still can. While a root is pending, viewport declarations coalesce into one
+charged fixed-size logical intent. After atomic root publication, one guarded
+command continuation recomputes that intent against the accepted projection.
+Stale grouped routes are never sent into a replacement query before its own
+root/topology publishes. Disposal, source replacement and newer demand invalidate
+queued replay; no loading telemetry event creates its own queued continuation. The scheduler keeps its reviewed four-physical/64-queued/
 256-subscriber limits and focused-root priority.
 
 `getSnapshot`, `getStatus`, `readSlot`/`getSlot`, `getDiagnostics`, loaded iteration
@@ -153,8 +160,8 @@ not claim a completed remote grid feature or unlimited browser scroll height.
 Verified with Node 24.20.0 and pnpm 10.12.1:
 
 - `pnpm --filter @pretable/core test src/remote/__tests__ --maxWorkers=1`:
-  274 tests passed across nine files, including all 235 pre-Task-8 remote tests.
-- `pnpm --filter @pretable/core test --maxWorkers=1`: 291 tests passed across
+  282 tests passed across nine files, including all 235 pre-Task-8 remote tests.
+- `pnpm --filter @pretable/core test --maxWorkers=1`: 299 tests passed across
   thirteen files, including the unchanged local core tests.
 - Core `typecheck`, `lint`, `build` and `api:check`: passed.
 - `tsc -p type-tests/tsconfig.json --noEmit` and

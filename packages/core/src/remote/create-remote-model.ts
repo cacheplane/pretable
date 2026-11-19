@@ -56,6 +56,16 @@ export function createRemoteModel<TRow extends object, TColumns>(
   let viewport: PretableRemoteViewport | undefined;
   // Fixed-size refusal identity, never the unadmitted route/key candidate map.
   let refusedViewport: PretableRemoteViewport | undefined;
+  let pendingViewport:
+    | { readonly generation: number; readonly viewport: PretableRemoteViewport }
+    | undefined;
+  let scheduledViewport: typeof pendingViewport;
+  let demandSequence = 0;
+  function clearPendingViewport() {
+    pendingViewport = undefined;
+    scheduledViewport = undefined;
+    retention.dropGlobal("viewport-intent");
+  }
   let wanted = new Map<string, ModelBlock>();
   const requestKey = (op: RemoteInvocation) =>
     JSON.stringify(["request", op.generation, op.kind, op.key, op.ownership]);
@@ -143,6 +153,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
         summaryPending.clear();
         refusedSummaries.clear();
         wanted.clear();
+        clearPendingViewport();
       }
     },
     prepareQuery(generation) {
@@ -347,6 +358,31 @@ export function createRemoteModel<TRow extends object, TColumns>(
       if (drops.length) apply(retention.prepare({ drops }));
     } else if (state.state === "error") retention.clearBodies();
     publish();
+    const intent = pendingViewport;
+    if (
+      intent &&
+      scheduledViewport !== intent &&
+      state.state === "ready" &&
+      state.generation === intent.generation &&
+      retention.visible === state.generation
+    ) {
+      scheduledViewport = intent;
+      const expectedCommand = command,
+        expectedDemand = demandSequence;
+      // This is the continuation of an explicit demand command, never a read
+      // side effect. Resolve ranks against the newly accepted projection.
+      void Promise.resolve().then(() => {
+        if (
+          !disposed &&
+          command === expectedCommand &&
+          demandSequence === expectedDemand &&
+          pendingViewport === intent &&
+          snapshot.status.state === "ready" &&
+          snapshot.generation === intent.generation
+        )
+          void demandViewport(intent.viewport, true);
+      });
+    }
   });
   async function setQuery(input: PretableRemoteQuery<TColumns>, force = false) {
     if (disposed) return;
@@ -381,6 +417,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
       pending.clear();
       summaryPending.clear();
       refusedSummaries.clear();
+      clearPendingViewport();
       wanted.clear();
       viewport = undefined;
       refusedViewport = undefined;
@@ -408,6 +445,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
     pending.clear();
     summaryPending.clear();
     refusedSummaries.clear();
+    clearPendingViewport();
     wanted.clear();
     viewport = undefined;
     refusedViewport = undefined;
@@ -424,6 +462,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
     )
       throw new RangeError("Invalid viewport");
     const expectedCommand = command;
+    demandSequence++;
     if (
       !force &&
       refusedViewport?.start === next.start &&
@@ -452,7 +491,31 @@ export function createRemoteModel<TRow extends object, TColumns>(
       refuseViewport();
       return;
     }
-    if (retention.capacity && !snapshot.displayCount) return;
+    if (snapshot.status.state !== "ready") {
+      const intent = {
+        generation: snapshot.generation,
+        viewport: requestedViewport,
+      };
+      const plan = retention.prepare({
+        additions: [
+          {
+            scope: -1,
+            key: "viewport-intent",
+            kind: "external",
+            value: undefined,
+            metadataBytes: 128,
+          },
+        ],
+      });
+      if (!apply(plan)) {
+        refuseViewport();
+        return;
+      }
+      pendingViewport = Object.freeze(intent);
+      scheduledViewport = undefined;
+      publish();
+      return;
+    }
     retention.capacity = undefined;
     const index = snapshot.displayCount
       ? retention.index(snapshot.rootCount)
@@ -488,6 +551,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
     };
     const plan = retention.prepare({
       additions: [metadata],
+      drops: [{ scope: -1, key: "viewport-intent" }],
       protectedRanges: new Set(demands.keys()),
     });
     if (!apply(plan)) {
@@ -495,6 +559,8 @@ export function createRemoteModel<TRow extends object, TColumns>(
       return;
     }
     viewport = requestedViewport;
+    pendingViewport = undefined;
+    scheduledViewport = undefined;
     refusedViewport = undefined;
     wanted = demands;
     sessionController.cancelReadsExcept(new Set(demands.keys()));
@@ -720,6 +786,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
       pending.clear();
       summaryPending.clear();
       refusedSummaries.clear();
+      clearPendingViewport();
       wanted.clear();
       viewport = undefined;
       refusedViewport = undefined;

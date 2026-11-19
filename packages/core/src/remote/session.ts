@@ -884,7 +884,9 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     },
     cancelReadsExcept(keys: ReadonlySet<string>) {
       const c = current;
-      if (!c) return;
+      // Bootstrap is session ownership, not viewport ownership. Only stop()
+      // (query replacement, expiry/revocation or disposal) may cancel its root.
+      if (!c?.published) return;
       const cancelled: AbortController[] = [];
       for (const [key] of c.requests) {
         if (keys.has(key)) continue;

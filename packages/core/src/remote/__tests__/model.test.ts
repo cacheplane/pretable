@@ -720,3 +720,143 @@ it("refuses viewport metadata atomically while retaining prior admitted demand",
   expect(f.model.readSlot(2)?.kind).toBe("loaded");
   f.model.dispose();
 });
+
+it.each([false, true])(
+  "keeps the bootstrap root through viewport and collapse actions (stale=%s)",
+  async (stale) => {
+    const f = setup();
+    if (stale) await f.ready();
+    f.model.setExpanded("pending-group", true);
+    const start = f.model.setQuery(
+      stale ? { ...query, search: "next" } : query,
+    );
+    await f.open(stale ? 1 : 0, 6);
+    const rootIndex = stale ? 1 : 0;
+    await f.model.demandViewport({ start: 2, end: 4 });
+    expect(f.reads[rootIndex]!.signal.aborted).toBe(false);
+    f.model.setExpanded("pending-group", false);
+    expect(f.reads[rootIndex]!.signal.aborted).toBe(false);
+    await f.read(rootIndex);
+    await start;
+    expect(f.model.getSnapshot()).toMatchObject({
+      rootCount: 6,
+      displayCount: 6,
+      status: { state: "ready" },
+    });
+    f.model.dispose();
+  },
+);
+it("still cancels bootstrap roots on actual query replacement and disposal", async () => {
+  const f = setup();
+  const a = f.model.setQuery(query);
+  await f.open();
+  const b = f.model.setQuery({ ...query, search: "next" });
+  expect(f.reads[0]!.signal.aborted).toBe(true);
+  await f.read(0);
+  await a;
+  await f.open(1);
+  f.model.dispose();
+  expect(f.reads[1]!.signal.aborted).toBe(true);
+  await f.read(1);
+  await b;
+  expect(f.model.getSnapshot().status.state).toBe("disposed");
+});
+
+it("replays viewport intent declared before open against the accepted root without a second declaration", async () => {
+  const f = setup();
+  const start = f.model.setQuery(query);
+  await f.model.demandViewport({ start: 4, end: 6 });
+  expect(f.reads).toHaveLength(0);
+  await f.open(0, 10);
+  await f.read(0);
+  await start;
+  expect(f.reads).toHaveLength(2);
+  expect(f.reads[1]!.request).toMatchObject({ route: [], start: 4, end: 6 });
+  const same = f.model.demandViewport({ start: 4, end: 6 });
+  expect(f.reads).toHaveLength(2);
+  await f.read(1);
+  await same;
+  expect(f.model.readSlot(4)?.kind).toBe("loaded");
+  f.model.dispose();
+});
+it("recomputes stale grouped viewport intent against the replacement query projection", async () => {
+  const f = setup();
+  const grouped = {
+    ...query,
+    rowGroups: [{ columnId: "value" as const }],
+    groupSort: [
+      {
+        level: 0,
+        by: "key" as const,
+        direction: "asc" as const,
+        nulls: "first" as const,
+        comparison: "binary@1",
+      },
+    ],
+  };
+  const route = [{ columnId: "value", key: 1 }];
+  const id = remoteGroupId(route);
+  await f.ready(grouped, 1, [
+    { kind: "group", id, route, label: "one", childCount: 6, aggregates: {} },
+  ]);
+  f.model.setExpanded(id, true);
+  const start = f.model.setQuery(query);
+  await f.model.demandViewport({ start: 1, end: 3 });
+  expect(f.reads).toHaveLength(1);
+  await f.open(1, 10);
+  f.model.setExpanded(id, false);
+  expect(f.reads[1]!.signal.aborted).toBe(false);
+  await f.read(1);
+  await start;
+  expect(f.reads).toHaveLength(3);
+  expect(f.reads[2]!.request).toMatchObject({ route: [], start: 2, end: 4 });
+  await f.read(2);
+  expect(f.model.readSlot(2)?.kind).toBe("loaded");
+  f.model.dispose();
+});
+
+it("coalesces loading telemetry into one latest viewport replay", async () => {
+  const f = setup();
+  const start = f.model.setQuery(query);
+  for (let i = 1; i <= 50; i++)
+    await f.model.demandViewport({ start: i * 2, end: i * 2 + 2 });
+  expect(f.reads).toHaveLength(0);
+  await f.open(0, 1000);
+  await f.read(0);
+  await start;
+  expect(f.reads).toHaveLength(2);
+  expect(f.reads[1]!.request).toMatchObject({ start: 100, end: 102 });
+  await f.read(1);
+  f.model.dispose();
+});
+it.each(["dispose", "source"] as const)(
+  "invalidates queued viewport replay on %s",
+  async (action) => {
+    const f = setup();
+    let acted = false;
+    let replacement: Promise<void> | undefined;
+    f.model.subscribe(() => {
+      if (!acted && f.model.getStatus().state === "ready") {
+        acted = true;
+        void Promise.resolve().then(() => {
+          if (action === "dispose") f.model.dispose();
+          else
+            replacement = f.model.setQuery({ ...query, source: "new-source" });
+        });
+      }
+    });
+    const start = f.model.setQuery(query);
+    await f.model.demandViewport({ start: 4, end: 6 });
+    await f.open(0, 10);
+    await f.read(0);
+    await start;
+    expect(f.reads).toHaveLength(1);
+    if (action === "source") {
+      await f.open(1, 10);
+      await f.read(1);
+      await replacement;
+      expect(f.reads).toHaveLength(2);
+      f.model.dispose();
+    }
+  },
+);
