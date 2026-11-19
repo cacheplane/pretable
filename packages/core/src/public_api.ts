@@ -229,3 +229,16 @@ export type {
   PretableRemoteReadHandle,
   PretableRemotePreparedQuery,
 } from "./remote/types";
+
+export { createRemoteModel } from "./remote/create-remote-model";
+export type {
+  PretableRemoteModel,
+  PretableRemoteModelOptions,
+  PretableRemoteModelLimits,
+  PretableRemoteModelSnapshot,
+  PretableRemoteViewport,
+  PretableRemoteLoadedEntry,
+  PretableRemoteDiagnostics,
+  PretableRemoteCapacity,
+} from "./remote/model-types";
+export type { PretableRemoteSummaryAnswer } from "./remote/summaries";

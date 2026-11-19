@@ -73,3 +73,41 @@ if (slot?.kind === "unloaded" || slot?.kind === "loading") {
   slot.id;
   void ordinal;
 }
+
+// The factory preserves provider row/column inference and exposes only read commands.
+import { createRemoteModel, type PretableRemoteModel } from "@pretable/core";
+const remote = createRemoteModel(provider, {
+  blockSize: 100,
+  limits: { payloadEntries: 500 },
+});
+const inferred: PretableRemoteModel<
+  { id: number; name: string; amount: number },
+  typeof columns
+> = remote;
+remote.setQuery(query);
+remote.setQuery({
+  ...query,
+  projection: [
+    // @ts-expect-error column inference survives the public factory
+    "unknown",
+  ],
+});
+remote.setQuery({
+  ...query,
+  // @ts-expect-error presentation widths are not remote query semantics
+  columnWidths: { name: 500 },
+});
+// @ts-expect-error remote read models have no local mutation surface
+remote.updateRows([]);
+for (const entry of remote.getSnapshot().loadedEntries()) {
+  if (entry.node.kind === "leaf") {
+    const name: string = entry.node.row.name;
+    void name;
+  }
+}
+const answer = remote.getSnapshot().getSummary("filtered");
+if (answer.state === "ready") {
+  const authority: "server" = answer.summary.authority;
+  void authority;
+}
+void inferred;

@@ -344,3 +344,33 @@ it("preflights replacements without retaining refused evidence", () => {
   ).toEqual({ ok: false, error: { code: "consistency" } });
   expect(v.retention().nodes).toBe(2);
 });
+
+it("retains only admitted branch count evidence after parent payload eviction", () => {
+  const v = createResponseValidator<Row, Columns>(groupedQuery, {
+    ...session,
+    rootCount: 1,
+  });
+  const route = [{ columnId: "value", key: 1 }];
+  const root = {
+    ...range(),
+    rootCount: 1,
+    siblingCount: 1,
+    entries: [
+      {
+        kind: "group" as const,
+        id: remoteGroupId(route),
+        route,
+        label: "one",
+        childCount: 4,
+        aggregates: { sum: aggregate() },
+      },
+    ],
+  };
+  expect(v.acceptRange(root, root).ok).toBe(true);
+  v.retainTopology([{ route, childCount: 4 }]);
+  v.releaseRange([], 0, 2);
+  expect(v.retention()).toMatchObject({ nodes: 0, counts: 2 });
+  const child = { ...range(), rootCount: 1, route };
+  expect(v.validateRequest(child).ok).toBe(true);
+  expect(v.acceptRange(child, child).ok).toBe(true);
+});

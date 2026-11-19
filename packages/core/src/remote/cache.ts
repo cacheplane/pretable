@@ -289,7 +289,17 @@ export class RemoteCache {
               }
             : {}),
         });
-        if (!scopes.has(record.scope)) return failure("unknown-scope");
+        // -1 is controller-lifetime accounting only, not a third data view.
+        // Session bodies, payload, topology and summaries never use this scope.
+        if (
+          !scopes.has(record.scope) &&
+          !(
+            record.scope === -1 &&
+            (record.kind === "external" || record.kind === "expansion") &&
+            !record.address
+          )
+        )
+          return failure("unknown-scope");
         if (
           typeof record.key !== "string" ||
           !kinds.has(record.kind) ||

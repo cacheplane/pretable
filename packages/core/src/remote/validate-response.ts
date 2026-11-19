@@ -196,6 +196,10 @@ export function createResponseValidator<TRow extends object, TColumns>(
   const ranges = new Map<string, PretableRemoteRange<TRow>>();
   const summaries = new Map<string, PretableRemoteSummary>();
   let disposed = false;
+  let topology: readonly {
+    readonly route: PretableRemoteRoute;
+    readonly childCount: number;
+  }[] = [];
   function routeValid(route: PretableRemoteRoute) {
     canonicalRemoteRoute(route);
     check(route.length <= query.rowGroups.length);
@@ -235,6 +239,8 @@ export function createResponseValidator<TRow extends object, TColumns>(
     const counts = new Map<string, number>(
       disposed ? [] : [[canonicalRemoteRoute([]), session.rootCount]],
     );
+    for (const node of topology)
+      counts.set(canonicalRemoteRoute(node.route), node.childCount);
     const nodes = new Map<string, PretableRemoteNode<TRow>>();
     const ids = new Map<string, string>();
     for (const range of ranges.values()) {
@@ -384,6 +390,9 @@ export function createResponseValidator<TRow extends object, TColumns>(
         return s;
       });
     },
+    retainTopology(nodes: typeof topology) {
+      topology = nodes;
+    },
     /** Commit only a successful preflight, with no external callbacks between. */
     commitRange(r: PretableRemoteRange<TRow>) {
       ranges.set(rangeAddress(r.route, r.start, r.end), r);
@@ -413,6 +422,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
     dispose() {
       ranges.clear();
       summaries.clear();
+      topology = [];
       disposed = true;
     },
   };

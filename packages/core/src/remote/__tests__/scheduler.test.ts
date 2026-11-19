@@ -861,3 +861,28 @@ it("waits for admission wake and holds ingress through consumer acceptance", asy
   expect(leases).toBe(0);
   scheduler.dispose();
 });
+
+it("retains ingress until final failure acceptance, not only success acceptance", async () => {
+  let leases = 0;
+  let accepted!: () => void;
+  const acceptanceDone = new Promise<void>((resolve) => {
+    accepted = resolve;
+  });
+  const scheduler = createRemoteScheduler({
+    acquire: () => {
+      leases++;
+      return () => {
+        leases--;
+      };
+    },
+  });
+  await scheduler.schedule(
+    { ...demand("failure"), acceptanceDone },
+    async () => ({ ok: false, error: { code: "timeout" } }),
+  );
+  expect(leases).toBe(1);
+  accepted();
+  await tick();
+  expect(leases).toBe(0);
+  scheduler.dispose();
+});

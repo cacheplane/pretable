@@ -359,3 +359,43 @@ describe("RemoteCache admission owner", () => {
     expect(cache.snapshot().records).toBe(0);
   });
 });
+
+it("charges controller metadata independently of two body scopes and refuses global payload", () => {
+  const cache = new RemoteCache();
+  expect(cache.openScope(1)).toBe(true);
+  expect(cache.openScope(2)).toBe(true);
+  const plan = cache.prepare({
+    records: [
+      {
+        scope: -1,
+        key: "request",
+        kind: "external",
+        value: undefined,
+        metadataBytes: 200,
+      },
+    ],
+  });
+  expect(plan.ok).toBe(true);
+  if (plan.ok) expect(cache.commit(plan.plan)).toBe(true);
+  cache.closeScope(1);
+  cache.closeScope(2);
+  expect(cache.snapshot().records).toBe(1);
+  expect(cache.snapshot().metadataBytes).toBeGreaterThan(200);
+  expect(
+    cache.prepare({
+      records: [
+        {
+          scope: -1,
+          key: "body",
+          kind: "payload",
+          value: {},
+          entries: 1,
+          bytes: 1,
+          address: { generation: -1, route: [], start: 0, end: 1 },
+        },
+      ],
+    }).ok,
+  ).toBe(false);
+  cache.drop(-1, "request");
+  expect(cache.snapshot().metadataBytes).toBe(0);
+});

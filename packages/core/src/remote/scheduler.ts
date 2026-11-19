@@ -14,7 +14,7 @@ export interface RemoteSchedulerClock {
 }
 interface Options {
   /** Undefined blocks dispatch until wake; release runs after physical settlement and acceptance. */
-  readonly acquire?: () => (() => void) | undefined;
+  readonly acquire?: (demand: RemoteDemand) => (() => void) | undefined;
   readonly maxActive?: number;
   readonly maxQueued?: number;
   readonly maxSubscribers?: number;
@@ -198,7 +198,14 @@ export function createRemoteScheduler(options: Options = {}) {
         pump();
       };
       const acceptance =
-        result.ok && !j.closed && !disposed
+        !j.closed &&
+        !disposed &&
+        !(
+          !result.ok &&
+          result.error.code === "transient" &&
+          j.attempts < 3 &&
+          queued().length <= maxQueued
+        )
           ? subscribers
               .filter((s) => !s.done)
               .map((s) => s.demand.acceptanceDone)
@@ -258,7 +265,9 @@ export function createRemoteScheduler(options: Options = {}) {
         if (options.acquire) {
           let release: (() => void) | undefined;
           try {
-            release = options.acquire();
+            release = options.acquire(
+              [...j.subscribers].find((s) => !s.done)!.demand,
+            );
           } catch {
             close(j, cancelled);
             continue;

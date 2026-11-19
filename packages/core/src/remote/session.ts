@@ -28,6 +28,8 @@ export interface RemoteInvocation {
   readonly kind: "open" | "read" | "summary";
   /** Resolves after consumer acceptance/discard, independently of transport settlement. */
   readonly acceptanceDone?: Promise<void>;
+  readonly retainedMetadataBytes?: number;
+  readonly ownership?: number;
   readonly generation: number;
   /** Sensitive internal address; never log or persist it. */
   readonly key: string;
@@ -73,6 +75,11 @@ type RemoteInvoke = <T>(
   run: (signal?: PretableRemoteSignal) => Promise<PretableRemoteResult<T>>,
 ) => Promise<PretableRemoteResult<T>>;
 interface Options<TRow extends object> {
+  readonly prepareQuery?: (generation: number) => boolean;
+  readonly prepareSession?: (
+    session: PretableRemoteSession,
+    generation: number,
+  ) => boolean;
   /** Preflight may run sizing code. Commit must be synchronous and callback-free. */
   readonly prepareAdmission?: (
     input: RemoteAdmission<TRow>,
@@ -119,6 +126,13 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
   let current: Context | undefined;
   let lastQuery: PretableRemoteQuery<TColumns> | undefined;
   let visibleValidator: Validator | undefined;
+  let visibleTopology: readonly {
+    readonly route: PretableRemoteRoute;
+    readonly childCount: number;
+    readonly ordinal?: number;
+  }[] = [];
+  let ownerSequence = 0;
+  const ownerIdentities = new WeakMap<AbortController, number>();
   let snapshot: RemoteSessionSnapshot<TRow> = Object.freeze({
     state: "idle",
     generation,
@@ -206,6 +220,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
   function purge() {
     visibleValidator?.dispose();
     visibleValidator = undefined;
+    visibleTopology = [];
   }
   function owns(c: Context, key: string, owner: AbortController) {
     return (
@@ -219,6 +234,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
   function ownerFor(c: Context, key: string) {
     const previous = c.owners.get(key);
     const owner = new AbortController();
+    ownerIdentities.set(owner, ++ownerSequence);
     let resolve!: () => void;
     const promise = new Promise<void>((done) => {
       resolve = done;
@@ -289,6 +305,12 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
               key,
               signal: owner.signal,
               acceptanceDone: completions.get(owner)?.promise,
+              ownership: ownerIdentities.get(owner),
+              retainedMetadataBytes:
+                256 +
+                6 *
+                  JSON.stringify([c.query, c.session, c.requests.get(key)])
+                    .length,
               ...(kind === "open"
                 ? {
                     onDiscardedResult: (value: unknown) => {
@@ -402,6 +424,15 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       .flatMap((r) =>
         r.entries.filter((n) => n.kind === "group").map((n) => n.route),
       );
+    for (const group of visibleTopology) {
+      if (
+        group.ordinal !== undefined &&
+        group.ordinal >= request.start &&
+        group.ordinal < request.end &&
+        canonicalRemoteRoute(group.route.slice(0, -1)) === deniedRoute
+      )
+        deniedGroups.push(group.route);
+    }
     const removed = snapshot.view.ranges.filter(
       (r) =>
         (canonicalRemoteRoute(r.route) === deniedRoute &&
@@ -559,15 +590,22 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         ? c.validator.acceptRange(request, response.value, false)
         : response;
       if (!answer.ok) {
+        c.owners.delete(key);
+        c.requests.delete(key);
         handleError(c, answer.error, key, request);
         return;
       }
-      const plan = options.prepareAdmission?.({
-        generation: c.generation,
-        root,
-        session: c.session,
-        value: answer.value,
-      });
+      let plan: RemoteAdmissionPlan | undefined;
+      try {
+        plan = options.prepareAdmission?.({
+          generation: c.generation,
+          root,
+          session: c.session,
+          value: answer.value,
+        });
+      } catch {
+        /* Composition reports its own admission diagnostic. */
+      }
       if (!owns(c, key, owner)) return;
       if (options.prepareAdmission && (!plan || !plan.commit())) {
         c.owners.delete(key);
@@ -647,7 +685,10 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         /* Invalid/proxied input has no trusted scope identity. */
       }
       if (!stillStarting()) return;
-      if (!sameScope) purge();
+      if (!sameScope) {
+        purge();
+        lastQuery = undefined;
+      }
       publish({
         state: visibleValidator && snapshot.view ? "stale" : "error",
         generation,
@@ -682,6 +723,23 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       ...(visibleValidator && snapshot.view ? { view: snapshot.view } : {}),
     });
     if (!active(c)) return;
+    if (options.prepareQuery) {
+      let admitted = false;
+      try {
+        admitted = options.prepareQuery(startGeneration);
+      } catch {
+        /* Composition owns local diagnostic. */
+      }
+      if (!active(c)) return;
+      if (!admitted) {
+        current = undefined;
+        lastQuery = undefined;
+        notify(snapshot);
+        return;
+      }
+      notify(snapshot);
+      if (!active(c)) return;
+    }
     const owner = ownerFor(c, "open");
     try {
       const response = await invoke(c, "open", owner, "open", (signal) =>
@@ -703,8 +761,22 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         handleError(c, answer.error);
         return;
       }
+      if (options.prepareSession) {
+        let admitted = false;
+        try {
+          admitted = options.prepareSession(answer.value, c.generation);
+        } catch {
+          /* Failed admission owns no session. */
+        }
+        if (!active(c) || !admitted) {
+          release(answer.value);
+          if (active(c)) notify(snapshot);
+          return;
+        }
+      }
       c.session = answer.value;
       c.validator = createResponseValidator(query, answer.value);
+      if (options.prepareSession) notify(snapshot);
       if (expired(c)) return;
       consumed(owner);
       await readContext(c, [], 0, rootRangeSize, true);
@@ -746,15 +818,21 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
           ? c.validator.acceptSummary(scope, response.value, false)
           : response;
         if (!answer.ok) {
+          c.owners.delete(key);
           handleError(c, answer.error, key);
           return;
         }
-        const plan = options.prepareAdmission?.({
-          generation: c.generation,
-          root: false,
-          session: c.session,
-          value: answer.value,
-        });
+        let plan: RemoteAdmissionPlan | undefined;
+        try {
+          plan = options.prepareAdmission?.({
+            generation: c.generation,
+            root: false,
+            session: c.session,
+            value: answer.value,
+          });
+        } catch {
+          /* Composition reports its own admission diagnostic. */
+        }
         if (!owns(c, key, owner)) return;
         if (options.prepareAdmission && (!plan || !plan.commit())) {
           c.owners.delete(key);
@@ -792,6 +870,39 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       return () => {
         listeners.delete(listener);
       };
+    },
+    /** Composition-only synchronous bookkeeping; no notification between participants. */
+    retainTopology(
+      nodes: readonly {
+        readonly route: PretableRemoteRoute;
+        readonly childCount: number;
+        readonly ordinal?: number;
+      }[],
+    ) {
+      visibleTopology = nodes;
+      visibleValidator?.retainTopology(nodes);
+    },
+    cancelReadsExcept(keys: ReadonlySet<string>) {
+      const c = current;
+      if (!c) return;
+      const cancelled: AbortController[] = [];
+      for (const [key] of c.requests) {
+        if (keys.has(key)) continue;
+        const owner = c.owners.get(key);
+        if (owner) {
+          cancelled.push(owner);
+          consumed(owner);
+        }
+        c.owners.delete(key);
+        c.requests.delete(key);
+      }
+      const errors = Object.fromEntries(
+        Object.entries(snapshot.errors ?? {}).filter(
+          ([key]) => keys.has(key) || key.startsWith("summary:"),
+        ),
+      );
+      stage({ ...snapshot, errors: Object.freeze(errors) });
+      for (const owner of cancelled) owner.abort();
     },
     /** Task7 eviction must release published payload and its evidence together. */
     evictRange,
