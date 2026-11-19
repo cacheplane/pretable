@@ -57,24 +57,42 @@ export class SparseIndex {
   get allocatedNodes(): number {
     return this.groups.size + 1;
   }
+  /** Cumulative descriptor/ancestor visits, including refused preparations. */
+  private work = 0;
+  get preparationWork(): number {
+    return this.work;
+  }
   resolve(group: SparseGroup): void {
-    count(group.ordinal);
-    count(group.childCount);
-    if (!group.id) throw new Error("Group requires identity");
-    const current = this.groups.get(group.id);
-    if (
-      current &&
-      (current.parent !== group.parent ||
-        current.ordinal !== group.ordinal ||
-        current.childCount !== group.childCount)
-    )
-      throw new Error("Contradictory descriptor within result session");
+    this.resolveBatch([group]);
+  }
+  /** One candidate build for ingress/publication, never N complete tree builds. */
+  resolveBatch(
+    groups: Iterable<SparseGroup>,
+    expanded: Iterable<string> = this.expanded,
+  ): void {
     const next = new Map(this.groups);
-    next.set(group.id, { ...group });
-    if (next.size + 1 > this.limits.maxNodes)
-      throw new RangeError("Topology cap");
-    const branches = this.build(next, this.expanded);
+    for (const group of groups) {
+      count(group.ordinal);
+      count(group.childCount);
+      if (!group.id) throw new Error("Group requires identity");
+      const current = next.get(group.id);
+      if (
+        current &&
+        (current.parent !== group.parent ||
+          current.ordinal !== group.ordinal ||
+          current.childCount !== group.childCount)
+      )
+        throw new Error("Contradictory descriptor within result session");
+      next.set(group.id, { ...group });
+      if (next.size + 1 > this.limits.maxNodes)
+        throw new RangeError("Topology cap");
+    }
+    const expansion = new Set(expanded);
+    if (expansion.size > this.limits.maxExpanded)
+      throw new RangeError("Expansion cap");
+    const branches = this.build(next, expansion);
     this.groups = next;
+    this.expanded = expansion;
     this.branches = branches;
   }
   setExpanded(id: string, value: boolean): void {
@@ -93,10 +111,12 @@ export class SparseIndex {
   ): Map<string | null, Branch> {
     const children = new Map<string | null, SparseGroup[]>();
     for (const group of groups.values()) {
+      this.work++;
       let parent = group.parent;
       let depth = 1;
       const seen = new Set([group.id]);
       while (parent !== null) {
+        this.work++;
         if (seen.has(parent)) throw new Error("Topology cycle");
         seen.add(parent);
         const ancestor = groups.get(parent);

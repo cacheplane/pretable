@@ -186,3 +186,30 @@ it("keeps required expanded topology and intent after bounded store eviction", a
   expect(index.at(1000001)).toEqual({ parent: "region", ordinal: 999999 });
   expect(index.allocatedNodes).toBe(2);
 });
+
+it("publishes a batch of descriptors and expansions atomically without per-node rebuilds", () => {
+  const index = new SparseIndex(1000);
+  expect(index.resolveBatch).toBeTypeOf("function");
+  const groups = Array.from({ length: 1000 }, (_, ordinal) => ({
+    id: String(ordinal),
+    parent: null,
+    ordinal,
+    childCount: 10,
+  }));
+  index.resolveBatch(
+    groups,
+    groups.map((group) => group.id),
+  );
+  expect(index.preparationWork).toBe(1000);
+  expect(index.rowCount).toBe(11000);
+  expect(index.at(10999)).toEqual({ parent: "999", ordinal: 9 });
+  expect(index.rank("999", 9)).toBe(10999);
+  expect(() =>
+    index.resolveBatch(
+      [{ id: "invalid", parent: "absent", ordinal: 0, childCount: 1 }],
+      [],
+    ),
+  ).toThrow();
+  expect(index.rowCount).toBe(11000);
+  expect(index.allocatedNodes).toBe(1001);
+});

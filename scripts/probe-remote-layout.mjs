@@ -1,23 +1,28 @@
-/* global document, probe -- callbacks execute in the isolated fixture page */
+/* global document, probe, WheelEvent -- callbacks execute in the isolated fixture page */
 // Reproducible local-only geometry experiment; no production page or server.
 // Run: node scripts/probe-remote-layout.mjs
 import { chromium, webkit } from "@playwright/test";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-const source = ts.transpileModule(
-  readFileSync(
-    new URL("../packages/renderer-dom/src/remote-layout.ts", import.meta.url),
-    "utf8",
-  ),
-  {
+function moduleURL(path) {
+  const file = new URL(path, import.meta.url);
+  let source = ts.transpileModule(readFileSync(file, "utf8"), {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.ES2022,
     },
-  },
-).outputText;
-const moduleURL = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+  }).outputText;
+  source = source.replace(/from ["']([^"']+)["']/g, (match, specifier) => {
+    const dependency =
+      specifier === "@pretable-internal/layout-core"
+        ? new URL("../packages/layout-core/src/read-layout.ts", import.meta.url)
+        : new URL(`${specifier}.ts`, file);
+    return `from ${JSON.stringify(moduleURL(dependency))}`;
+  });
+  return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+}
+const runtimeURL = moduleURL("../packages/renderer-dom/src/remote-layout.ts");
 const evidence = [];
 for (const [name, engine] of Object.entries({ chromium, webkit })) {
   const browser = await engine.launch({ headless: true });
@@ -45,7 +50,13 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       );
     });
     await page.evaluate(async (url) => {
-      const { RemoteScrollMapping, RemoteMetrics } = await import(url);
+      const {
+        RemoteScrollMapping,
+        RemoteMetrics,
+        RemoteScrollInput,
+        RemoteLayoutAdapter,
+        remoteLayoutNodeKey,
+      } = await import(url);
       const port = document.querySelector("#port"),
         space = document.querySelector("#space");
       const ranks = new Map([
@@ -66,25 +77,68 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
         port,
         space,
       };
+      state.adapter = new RemoteLayoutAdapter({
+        estimate: 20,
+        measurementCap: 2,
+      });
+      state.input = new RemoteScrollInput(state.mapping, () => 20);
       function paint() {
+        if (state.input.mapping !== state.mapping)
+          state.input = new RemoteScrollInput(state.mapping, () => 20);
         const m = state.mapping;
         space.style.height = `${m.domHeight}px`;
         port.scrollTop = m.domScrollTop;
+        state.input.recordDOM(port.scrollTop);
         space.replaceChildren();
-        const first = metrics.getIndexForOffset(m.logicalScrollTop);
-        for (
-          let rank = first;
-          rank < Math.min(metrics.rowCount, first + 34);
-          rank++
-        ) {
+        const loaded = [...ranks].map(([id, index]) => ({
+          index,
+          node: { kind: "leaf", id, row: { id } },
+        }));
+        const snapshot = {
+          status: { state: "idle" },
+          generation: 1,
+          rootCount: metrics.rowCount,
+          displayCount: metrics.rowCount,
+          residentCount: loaded.length,
+          residentLeafCount: loaded.length,
+          residentGroupCount: 0,
+          loadedEntries: () => loaded,
+          readSlot(index) {
+            if (index < 0 || index >= metrics.rowCount) return;
+            const found = loaded.find((entry) => entry.index === index);
+            return found
+              ? { kind: "loaded", node: found.node }
+              : { kind: "unloaded", route: [], ordinal: index };
+          },
+          getSummary: () => ({ state: "unavailable" }),
+        };
+        const pending = state.adapter.prepare(snapshot);
+        while (!pending.advance(16)) {
+          /* fixture has only two resident records */
+        }
+        if (!pending.commit())
+          throw new Error("Adapter rejected browser fixture");
+        state.adapter.measureBatch(
+          loaded.map((entry) => ({
+            id: remoteLayoutNodeKey(entry.node),
+            height: metrics.getHeight(entry.index),
+          })),
+        );
+        state.adapter.setViewport({
+          scrollTop: m.logicalScrollTop,
+          viewportHeight: 600,
+          overscan: 2,
+        });
+        for (const geometry of state.adapter.getState().rows) {
+          const rank = geometry.index;
           const row = document.createElement("div");
           row.className = "row";
           row.dataset.rank = String(rank);
           row.dataset.id =
             rank === ranks.get("anchor") ? "anchor" : `slot-${rank}`;
-          row.dataset.logicalTop = String(metrics.getOffsetForIndex(rank));
-          row.style.top = `${m.toDOMRowTop(metrics.getOffsetForIndex(rank), port.scrollTop)}px`;
-          row.style.height = `${metrics.getHeight(rank)}px`;
+          row.dataset.logicalTop = String(geometry.top);
+          row.style.top = `${m.toDOMRowTop(geometry.top, port.scrollTop)}px`;
+          row.style.height = `${geometry.height}px`;
           row.textContent = row.dataset.id;
           space.append(row);
         }
@@ -92,12 +146,46 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       port.addEventListener(
         "wheel",
         (event) => {
-          event.preventDefault();
-          state.mapping.moveBy(event.deltaY);
-          paint();
+          if (state.input.wheel(event)) {
+            event.preventDefault();
+            paint();
+          }
         },
         { passive: false },
       );
+      port.tabIndex = 0;
+      port.addEventListener("scroll", () => {
+        if (state.input.fromDOM(port.scrollTop)) paint();
+      });
+      port.addEventListener("keydown", (event) => {
+        if (state.input.key(event.key)) {
+          event.preventDefault();
+          paint();
+        }
+      });
+      port.addEventListener(
+        "touchstart",
+        (event) => {
+          if (event.touches.length === 1)
+            state.input.touchStart(event.touches[0].clientY);
+          else state.input.touchEnd();
+        },
+        { passive: false },
+      );
+      port.addEventListener(
+        "touchmove",
+        (event) => {
+          if (
+            event.touches.length === 1 &&
+            state.input.touchMove(event.touches[0].clientY)
+          ) {
+            event.preventDefault();
+            paint();
+          } else state.input.touchEnd();
+        },
+        { passive: false },
+      );
+      port.addEventListener("touchend", () => state.input.touchEnd());
       state.paint = paint;
       state.read = () => {
         const viewport = port.getBoundingClientRect();
@@ -124,7 +212,7 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       globalThis.probe = state;
       state.mapping.fromDOM(state.mapping.domRange * 0.8);
       paint();
-    }, moduleURL);
+    }, runtimeURL);
     const distant = await page.evaluate(() => probe.read());
     assert(distant.rows.some((r) => r.intersects));
     for (const row of distant.rows.filter((r) => r.intersects))
@@ -138,6 +226,70 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     const wheel = await page.evaluate(() => probe.read());
     assert.equal(wheel.scrollTop - distant.scrollTop, 40);
     assert(wheel.rows.some((r) => r.intersects));
+    await page.locator("#port").focus();
+    await page.keyboard.press("PageDown");
+    await page.keyboard.press("ArrowUp");
+    const keyboard = await page.evaluate(() => probe.read());
+    assert.equal(keyboard.scrollTop - wheel.scrollTop, 580);
+    const normalized = await page.evaluate(() => {
+      const before = probe.mapping.logicalScrollTop;
+      const results = [];
+      for (const init of [
+        { deltaY: 2, deltaMode: 1 },
+        { deltaY: 0.5, deltaMode: 2 },
+        { deltaY: 0.25, deltaMode: 0 },
+        { deltaY: 100, deltaMode: 0, ctrlKey: true },
+      ]) {
+        const event = new WheelEvent("wheel", {
+          ...init,
+          bubbles: true,
+          cancelable: true,
+        });
+        probe.port.dispatchEvent(event);
+        results.push({
+          prevented: event.defaultPrevented,
+          scrollTop: probe.mapping.logicalScrollTop,
+        });
+      }
+      return { before, results };
+    });
+    assert.equal(normalized.results[0].scrollTop - normalized.before, 40);
+    assert.equal(normalized.results[1].scrollTop - normalized.before, 340);
+    assert.equal(normalized.results[2].scrollTop - normalized.before, 340.25);
+    assert.equal(
+      normalized.results[3].scrollTop,
+      normalized.results[2].scrollTop,
+    );
+    assert.equal(normalized.results[3].prevented, false);
+    let touch = {
+      evidence:
+        "unavailable: physical-device touch/trackpad inertia not exercised",
+    };
+    if (name === "chromium") {
+      const cdp = await page.context().newCDPSession(page);
+      const before = await page.evaluate(() => probe.mapping.logicalScrollTop);
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x: 200, y: 300 }],
+      });
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: 200, y: 260 }],
+      });
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+      const after = await page.evaluate(() => probe.read());
+      assert.equal(after.scrollTop - before, 40);
+      assert(after.rows.some((row) => row.intersects));
+      touch = {
+        evidence:
+          "Chromium protocol-dispatched touch; not physical-device momentum",
+        delta: after.scrollTop - before,
+      };
+      await cdp.detach();
+    }
     const anchors = await page.evaluate(() => {
       const p = probe;
       p.mapping.seek(p.metrics.getOffsetForIndex(p.ranks.get("anchor")) + 7);
@@ -197,6 +349,9 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       caps,
       distant: compact(distant),
       wheel: compact(wheel),
+      keyboard: compact(keyboard),
+      normalized,
+      touch,
       anchors: Object.fromEntries(
         Object.entries(anchors).map(([key, value]) => [key, compact(value)]),
       ),

@@ -34,3 +34,6 @@ export type {
   RowHeightReplacementSource,
   ViewportPlan,
 } from "./types";
+
+export { readLayout } from "./read-layout";
+export type { ReadLayoutInput, ReadLayoutResult } from "./read-layout";

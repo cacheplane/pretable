@@ -279,8 +279,10 @@ export class ModelRetention<TRow extends object> {
       maxDepth: this.cache.limits.depth,
       maxExpanded: this.cache.limits.expansions,
     });
-    for (const group of groups.values()) index.resolve(group);
-    for (const id of expanded) if (groups.has(id)) index.setExpanded(id, true);
+    index.resolveBatch(
+      groups.values(),
+      [...expanded].filter((id) => groups.has(id)),
+    );
     return index;
   }
 }

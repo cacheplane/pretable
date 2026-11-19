@@ -1,0 +1,65 @@
+{
+  "recordedAt": "2026-11-19T23:12:11.693Z",
+  "loadavg": [8.56689453125, 7.1630859375, 8.4638671875],
+  "initial": {
+    "scopes": 1,
+    "payloadEntries": 5000,
+    "payloadBytes": 3721128,
+    "metadataBytes": 7156616,
+    "ingressBytes": 0,
+    "topology": 5001,
+    "expansions": 0,
+    "stores": 1,
+    "active": 0,
+    "queued": 0,
+    "subscribers": 0,
+    "evidenceNodes": 5000,
+    "listeners": 0
+  },
+  "final": {
+    "scopes": 1,
+    "payloadEntries": 5000,
+    "payloadBytes": 3721128,
+    "metadataBytes": 8388024,
+    "ingressBytes": 0,
+    "topology": 5001,
+    "expansions": 1808,
+    "stores": 1,
+    "active": 0,
+    "queued": 0,
+    "subscribers": 0,
+    "evidenceNodes": 5000,
+    "listeners": 0,
+    "capacity": "minimum-visible-too-large"
+  },
+  "fillMs": 218.540791,
+  "acceptedExpansions": 1808,
+  "refusal": {
+    "scopes": 1,
+    "payloadEntries": 5000,
+    "payloadBytes": 3721128,
+    "metadataBytes": 8388024,
+    "ingressBytes": 0,
+    "topology": 5001,
+    "expansions": 1808,
+    "stores": 1,
+    "active": 0,
+    "queued": 0,
+    "subscribers": 0,
+    "evidenceNodes": 5000,
+    "listeners": 0,
+    "capacity": "minimum-visible-too-large"
+  },
+  "expansionNearCapacity": {
+    "min": 21.929040999995777,
+    "p50": 25.298416999998153,
+    "p95": 34.772916000001715,
+    "max": 39.919458999997005
+  },
+  "toggle": {
+    "min": 21.94862500000454,
+    "p50": 25.124292000000423,
+    "p95": 28.459583000003477,
+    "max": 38.874207999993814
+  }
+}

@@ -112,7 +112,7 @@ it("projects against observed DOM scroll rounding without changing logical telem
   expect(mapping.telemetry().scrollTop).toBe(1000000007);
 });
 
-it("resolves each retained measurement once for a viewport batch at the provisional cap", () => {
+it("resolves only changed measurements for a viewport batch at the provisional cap", () => {
   let work = 0;
   const metrics = new RemoteMetrics(100000000, 20, 100000, (id) => {
     work++;
@@ -125,7 +125,7 @@ it("resolves each retained measurement once for a viewport batch at the provisio
   metrics.measureBatch(
     Array.from({ length: 50 }, (_, i) => ({ id: String(i), height: 22 })),
   );
-  expect(work).toBe(100000);
+  expect(work).toBe(50);
   expect(metrics.measurementCount).toBe(100000);
   expect(metrics.getTotalHeight()).toBe(2000100050);
 });
@@ -147,4 +147,186 @@ it("terminates inverse lookup at safe-integer row-count boundaries without mater
     expect(metrics.probes).toBeLessThanOrEqual(54);
   }
   expect(metrics.measurementCount).toBe(0);
+});
+
+it("prepares topology measurement changes in bounded steps and rejects stale publication", () => {
+  const metrics = new RemoteMetrics(100000, 20, 1000, Number);
+  metrics.measureBatch(
+    Array.from({ length: 1000 }, (_, i) => ({ id: String(i), height: 21 })),
+  );
+  let work = 0;
+  expect(metrics.prepareSync).toBeTypeOf("function");
+  const pending = metrics.prepareSync(200000, (id) => {
+    work++;
+    return Number(id) + 1000;
+  });
+  expect(pending.advance(8)).toBe(false);
+  expect(work).toBe(8);
+  expect(metrics.getHeight(0)).toBe(21);
+  metrics.measure("0", 40);
+  while (!pending.advance(32)) {
+    /* bounded preparation */
+  }
+  expect(pending.commit()).toBe(false);
+  expect(metrics.getHeight(0)).toBe(40);
+  const accepted = metrics.prepareSync(200000, (id) => Number(id) + 1000);
+  while (!accepted.advance(32)) {
+    /* bounded preparation */
+  }
+  expect(accepted.commit()).toBe(true);
+  expect(metrics.getHeight(1000)).toBe(40);
+});
+
+it("uses transactional shared measurement admission, eviction and release", () => {
+  let allow = true;
+  const charges = new Map<string, number>();
+  const metrics = new RemoteMetrics(100, 20, 2, Number, {
+    prepare(changes, removed, transientBytes) {
+      expect(transientBytes).toBeGreaterThanOrEqual(0);
+      if (!allow) return undefined;
+      return {
+        commit() {
+          if (removed === "all") charges.clear();
+          else for (const id of removed) charges.delete(id);
+          for (const item of changes) charges.set(item.id, item.bytes);
+          return true;
+        },
+        cancel() {},
+      };
+    },
+  });
+  metrics.measure("1", 40);
+  expect(charges.size).toBe(1);
+  allow = false;
+  expect(metrics.measureBatch([{ id: "2", height: 30 }])).toBe(false);
+  expect(metrics.getHeight(2)).toBe(20);
+  expect(metrics.measurementCount).toBe(1);
+  allow = true;
+  metrics.measure("2", 30);
+  metrics.measure("3", 50);
+  expect([...charges.keys()]).toEqual(["2", "3"]);
+  expect(metrics.getHeight(1)).toBe(20);
+  expect(metrics.evictMeasurements(["2"])).toBe(true);
+  expect(charges.size).toBe(1);
+  metrics.invalidateMeasurements();
+  expect(charges.size).toBe(0);
+});
+
+it("normalizes wheel, keyboard and touch intent without amplifying physical scroll", async () => {
+  const api = await import("../remote-layout");
+  expect(api.RemoteScrollInput).toBeTypeOf("function");
+  const mapping = new RemoteScrollMapping(2000000000, 600, 8000000);
+  const input = new api.RemoteScrollInput(mapping, () => 24);
+  mapping.seek(1000000007);
+  expect(input.wheel({ deltaY: 2, deltaMode: 1 })).toBe(true);
+  expect(mapping.logicalScrollTop).toBe(1000000055);
+  input.wheel({ deltaY: 0.5, deltaMode: 2 });
+  input.wheel({ deltaY: 0.25, deltaMode: 0 }); // trackpad/momentum deltas retain fractions
+  expect(mapping.logicalScrollTop).toBe(1000000355.25);
+  expect(input.wheel({ deltaY: 100, deltaMode: 0, ctrlKey: true })).toBe(false);
+  expect(mapping.logicalScrollTop).toBe(1000000355.25);
+  input.key("PageDown");
+  input.key("ArrowUp");
+  expect(mapping.logicalScrollTop).toBe(1000000931.25);
+  input.touchStart(100);
+  input.touchMove(80);
+  input.touchMove(75);
+  input.touchEnd();
+  expect(mapping.logicalScrollTop).toBe(1000000956.25);
+  expect(input.touchMove(0)).toBe(false);
+  input.recordDOM(Math.floor(mapping.domScrollTop));
+  expect(input.fromDOM(Math.floor(mapping.domScrollTop))).toBe(false);
+  expect(mapping.logicalScrollTop).toBe(1000000956.25);
+  expect(input.fromDOM(mapping.domRange)).toBe(true);
+  expect(mapping.logicalScrollTop).toBe(mapping.logicalRange);
+  input.key("Home");
+  expect(mapping.logicalScrollTop).toBe(0);
+  input.key("End");
+  expect(mapping.logicalScrollTop).toBe(mapping.logicalRange);
+  expect(input.key("a")).toBe(false);
+});
+
+it("releases speculative measurement reservations when rank resolution or commit throws", () => {
+  let reserved = 0,
+    failCommit = false;
+  const metrics = new RemoteMetrics(10, 20, 5, Number, {
+    prepare() {
+      reserved++;
+      return {
+        commit() {
+          if (failCommit) throw new Error("owner failed");
+          reserved--;
+          return true;
+        },
+        cancel() {
+          reserved--;
+        },
+      };
+    },
+  });
+  metrics.measure("1", 30);
+  const pending = metrics.prepareSync(20, () => {
+    throw new Error("rank failed");
+  });
+  expect(reserved).toBe(1);
+  expect(() => pending.advance(1)).toThrow("rank failed");
+  expect(reserved).toBe(0);
+  pending.cancel();
+  expect(reserved).toBe(0);
+  expect(metrics.getHeight(1)).toBe(30);
+  const second = metrics.prepareSync(20, Number);
+  while (!second.advance(2)) {
+    /* bounded */
+  }
+  failCommit = true;
+  expect(() => second.commit()).toThrow("owner failed");
+  expect(reserved).toBe(0);
+  expect(metrics.rowCount).toBe(10);
+  expect(metrics.getHeight(1)).toBe(30);
+});
+
+it("matches an independent eager oracle through measured-prefix insertion, deletion and reordering", () => {
+  const retained = new Map<string, number>();
+  let shift = 0,
+    seed = 17;
+  const rankOf = (id: string) => (Number(id) + shift) % 50;
+  const metrics = new RemoteMetrics(50, 20, 10, rankOf);
+  for (let step = 0; step < 300; step++) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const id = String(seed % 50),
+      height = 10 + (seed % 70);
+    retained.delete(id);
+    retained.set(id, height);
+    while (retained.size > 10) retained.delete(retained.keys().next().value!);
+    metrics.measure(id, height);
+    if (step % 37 === 0) {
+      shift = (shift + 7) % 50;
+      metrics.sync(50, rankOf);
+    }
+    const heights = Array<number>(50).fill(20);
+    for (const [key, value] of retained) heights[rankOf(key)] = value;
+    let offset = 0;
+    for (let rank = 0; rank < 50; rank++) {
+      expect(metrics.getOffsetForIndex(rank)).toBe(offset);
+      expect(metrics.getHeight(rank)).toBe(heights[rank]);
+      expect(metrics.getIndexForOffset(offset + heights[rank]! - 1)).toBe(rank);
+      offset += heights[rank]!;
+    }
+    expect(metrics.getTotalHeight()).toBe(offset);
+  }
+});
+
+it("rejects reentrant budget mutations and preserves the published prefix", () => {
+  const hook: { callback?: () => void } = {};
+  const metrics = new RemoteMetrics(10, 20, 5, Number, {
+    prepare() {
+      hook.callback?.();
+      return { commit: () => true, cancel() {} };
+    },
+  });
+  metrics.measure("1", 30);
+  hook.callback = () => metrics.measure("2", 40);
+  expect(() => metrics.measure("3", 60)).toThrow(/Reentrant/);
+  expect(metrics.measurementCount).toBe(1);
+  expect(metrics.getTotalHeight()).toBe(210);
 });
