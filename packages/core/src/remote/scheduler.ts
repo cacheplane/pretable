@@ -1,0 +1,352 @@
+import type { RemoteInvocation } from "./session";
+import type { PretableRemoteResult, PretableRemoteSignal } from "./types";
+import { validateRemoteResult } from "./validate-response";
+
+export type RemotePriority = "focused" | "visible" | "overscan" | "prefetch";
+export interface RemoteDemand extends RemoteInvocation {
+  readonly priority?: RemotePriority;
+  readonly scope?: string;
+}
+export interface RemoteSchedulerClock {
+  now(): number;
+  setTimeout(callback: () => void, delay: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+interface Options {
+  readonly maxActive?: number;
+  readonly maxQueued?: number;
+  readonly maxSubscribers?: number;
+  readonly deadlineMs?: number;
+  readonly jitterSeed?: number;
+  readonly clock?: RemoteSchedulerClock;
+}
+const ranks: Record<RemotePriority, number> = {
+  focused: 0,
+  visible: 1,
+  overscan: 2,
+  prefetch: 3,
+};
+const cancelled = { ok: false, error: { code: "cancelled" } } as const;
+const timeout = { ok: false, error: { code: "timeout" } } as const;
+type Result = PretableRemoteResult<unknown>;
+
+/** One scheduler per model/controller. Keys are private, not telemetry. Physical
+ * permits track invoked promises, including providers that ignore cancellation. */
+export function createRemoteScheduler(options: Options = {}) {
+  const maxActive = options.maxActive ?? 4;
+  const maxQueued = options.maxQueued ?? 64;
+  const maxSubscribers = options.maxSubscribers ?? 256;
+  const deadlineMs = options.deadlineMs ?? 30_000;
+  for (const n of [maxActive, maxQueued, maxSubscribers, deadlineMs]) {
+    if (!Number.isSafeInteger(n) || n < 1)
+      throw new Error("invalid scheduler limit");
+  }
+  if (deadlineMs > 2_147_483_647) throw new Error("invalid scheduler deadline");
+  const clock: RemoteSchedulerClock = options.clock ?? {
+    now: Date.now,
+    setTimeout: (callback, delay) => setTimeout(callback, delay),
+    clearTimeout: (handle) =>
+      clearTimeout(handle as ReturnType<typeof setTimeout>),
+  };
+  let seed = (options.jitterSeed ?? 1) >>> 0;
+  let disposed = false,
+    pumping = false,
+    sequence = 0,
+    subscriberCount = 0;
+  interface Subscriber {
+    demand: RemoteDemand;
+    resolve: (result: Result) => void;
+    abort: () => void;
+    done: boolean;
+  }
+  interface Job {
+    id: string;
+    order: number;
+    priority: number;
+    subscribers: Set<Subscriber>;
+    controller: AbortController;
+    run: (signal: PretableRemoteSignal) => Promise<Result>;
+    attempts: number;
+    active: boolean;
+    closed: boolean;
+    ready: boolean;
+    timers: Set<unknown>;
+    deadline: number;
+    deadlineArmed: boolean;
+  }
+  const jobs = new Set<Job>();
+  const dedupe = new Map<string, Job>();
+  const identity = (d: Pick<RemoteInvocation, "generation" | "kind" | "key">) =>
+    JSON.stringify([d.generation, d.kind, d.key]);
+  const priority = (d: RemoteDemand) =>
+    ranks[d.priority ?? (d.kind === "open" || d.root ? "focused" : "visible")];
+  const queued = () => [...jobs].filter((j) => !j.closed && !j.active);
+  const activeCount = () => [...jobs].filter((j) => j.active).length;
+  function safe(callback: () => void) {
+    try {
+      callback();
+    } catch {
+      /* External callbacks cannot interrupt ownership cleanup. */
+    }
+  }
+  function clearTimers(j: Job) {
+    const timers = [...j.timers];
+    j.timers.clear();
+    for (const timer of timers) safe(() => clock.clearTimeout(timer));
+  }
+  function removeSubscriber(j: Job, s: Subscriber) {
+    if (j.subscribers.delete(s)) subscriberCount--;
+  }
+  function finishSubscriber(j: Job, s: Subscriber, result: Result) {
+    if (s.done) return;
+    s.done = true;
+    // Only physically pending work can have a late authorization result.
+    if (!j.active || !s.demand.onLateResult) removeSubscriber(j, s);
+    safe(() => s.demand.signal.removeEventListener("abort", s.abort));
+    s.resolve(result);
+  }
+  function close(j: Job, result: Result) {
+    if (j.closed) return;
+    j.closed = true;
+    if (dedupe.get(j.id) === j) dedupe.delete(j.id);
+    if (!j.active) jobs.delete(j);
+    clearTimers(j);
+    for (const s of [...j.subscribers]) finishSubscriber(j, s, result);
+    safe(() => j.controller.abort());
+    pump();
+  }
+  function timer(j: Job, delay: number, callback: () => void) {
+    let handle: unknown;
+    try {
+      handle = clock.setTimeout(() => {
+        j.timers.delete(handle);
+        if (!j.closed && !disposed) callback();
+      }, delay);
+    } catch {
+      close(j, cancelled);
+      return;
+    }
+    if (j.closed || disposed) safe(() => clock.clearTimeout(handle));
+    else j.timers.add(handle);
+  }
+  function withinDeadline(j: Job, delay: number, callback: () => void) {
+    let now: number;
+    try {
+      now = clock.now();
+    } catch {
+      close(j, cancelled);
+      return;
+    }
+    if (j.closed || disposed) return;
+    if (!Number.isFinite(now)) {
+      close(j, cancelled);
+      return;
+    }
+    const remaining = j.deadline - now;
+    if (remaining <= 0) {
+      close(j, timeout);
+      return;
+    }
+    timer(j, Math.min(delay, remaining), callback);
+  }
+  function settled(j: Job, raw: unknown) {
+    const result = validateRemoteResult<unknown>(raw);
+    // Retain the permit through reentrant late-result observers. They may cancel
+    // the remaining subscribers or dispose the scheduler before retry admission.
+    const late = [...j.subscribers].filter((s) => s.done);
+    for (const s of late) removeSubscriber(j, s);
+    for (const s of late)
+      if (!disposed && !result.ok) safe(() => s.demand.onLateResult?.(result));
+    j.active = false;
+    if (j.closed || disposed) {
+      jobs.delete(j);
+      for (const s of [...j.subscribers]) removeSubscriber(j, s);
+      pump();
+      return;
+    }
+    if (
+      !result.ok &&
+      result.error.code === "transient" &&
+      j.attempts < 3 &&
+      queued().length <= maxQueued
+    ) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const base = j.attempts === 1 ? 250 : 1000;
+      const delay = Math.max(
+        base + Math.floor((seed / 0x100000000) * base * 0.2),
+        result.error.retryAfterMs ?? 0,
+      );
+      j.ready = false;
+      withinDeadline(j, delay, () => {
+        j.ready = true;
+        pump();
+      });
+    } else close(j, result);
+    pump();
+  }
+  function pump() {
+    if (pumping || disposed) return;
+    pumping = true;
+    try {
+      while (!disposed && activeCount() < maxActive) {
+        const j = queued()
+          .filter((candidate) => candidate.ready)
+          .sort((a, b) => a.priority - b.priority || a.order - b.order)[0];
+        if (!j) break;
+        j.active = true;
+        j.attempts++;
+        let result: Promise<Result>;
+        try {
+          result = j.run(j.controller.signal);
+        } catch {
+          result = Promise.resolve({ ok: false, error: { code: "transient" } });
+        }
+        void Promise.resolve(result).then(
+          (value) => settled(j, value),
+          () => settled(j, { ok: false, error: { code: "transient" } }),
+        );
+      }
+    } finally {
+      pumping = false;
+    }
+  }
+  function schedule<T>(
+    demand: RemoteDemand,
+    run: (signal: PretableRemoteSignal) => Promise<PretableRemoteResult<T>>,
+  ): Promise<PretableRemoteResult<T>> {
+    if (disposed || demand.signal.aborted || subscriberCount >= maxSubscribers)
+      return Promise.resolve(cancelled);
+    const id = identity(demand);
+    let j = dedupe.get(id);
+    if (!j) {
+      let now: number;
+      try {
+        now = clock.now();
+      } catch {
+        return Promise.resolve(cancelled);
+      }
+      if (disposed || demand.signal.aborted || !Number.isFinite(now))
+        return Promise.resolve(cancelled);
+      // Clock callbacks may reenter scheduling; reread current ownership.
+      j = dedupe.get(id);
+      if (!j) {
+        if (queued().length >= maxQueued && activeCount() >= maxActive) {
+          const worst = queued().sort(
+            (a, b) => b.priority - a.priority || a.order - b.order,
+          )[0];
+          if (!worst || worst.priority <= priority(demand))
+            return Promise.resolve(cancelled);
+          close(worst, cancelled);
+        }
+        if (
+          disposed ||
+          demand.signal.aborted ||
+          subscriberCount >= maxSubscribers
+        )
+          return Promise.resolve(cancelled);
+        j = dedupe.get(id);
+        if (!j) {
+          // A reentrant abort callback may have filled the space just freed.
+          if (queued().length >= maxQueued) return Promise.resolve(cancelled);
+          j = {
+            id,
+            order: sequence++,
+            priority: priority(demand),
+            subscribers: new Set(),
+            controller: new AbortController(),
+            run,
+            attempts: 0,
+            active: false,
+            closed: false,
+            ready: true,
+            timers: new Set(),
+            deadline: now + deadlineMs,
+            deadlineArmed: false,
+          };
+          jobs.add(j);
+          dedupe.set(id, j);
+        }
+      }
+    }
+    if (disposed || demand.signal.aborted || subscriberCount >= maxSubscribers)
+      return Promise.resolve(cancelled);
+    const job = j;
+    const promise = new Promise<Result>((resolve) => {
+      const s: Subscriber = {
+        demand,
+        resolve,
+        done: false,
+        abort: () => {
+          finishSubscriber(job, s, cancelled);
+          const remaining = [...job.subscribers].filter(
+            (subscriber) => !subscriber.done,
+          );
+          if (!remaining.length) close(job, cancelled);
+          else
+            job.priority = Math.min(
+              ...remaining.map((subscriber) => priority(subscriber.demand)),
+            );
+        },
+      };
+      job.subscribers.add(s);
+      subscriberCount++;
+      job.priority = Math.min(job.priority, priority(demand));
+      try {
+        demand.signal.addEventListener("abort", s.abort, { once: true });
+      } catch {
+        s.abort();
+      }
+      if (demand.signal.aborted || disposed) s.abort();
+    });
+    if (!job.closed && !job.deadlineArmed) {
+      job.deadlineArmed = true;
+      withinDeadline(job, deadlineMs, () => close(job, timeout));
+    }
+    pump();
+    return promise as Promise<PretableRemoteResult<T>>;
+  }
+  return {
+    schedule,
+    /** Replace only a named viewport's demand. No inferred row geometry. */
+    replaceDemand(
+      scope: string,
+      demands: readonly Pick<
+        RemoteDemand,
+        "generation" | "kind" | "key" | "priority"
+      >[],
+    ) {
+      const wanted = new Map(demands.map((d) => [identity(d), d.priority]));
+      for (const j of [...jobs]) {
+        for (const s of [...j.subscribers]) {
+          if (s.done || s.demand.scope !== scope) continue;
+          if (!wanted.has(j.id)) s.abort();
+          else s.demand = { ...s.demand, priority: wanted.get(j.id) };
+        }
+        const remaining = [...j.subscribers].filter((s) => !s.done);
+        if (remaining.length)
+          j.priority = Math.min(...remaining.map((s) => priority(s.demand)));
+      }
+      pump();
+    },
+    getSnapshot() {
+      const active = activeCount();
+      return Object.freeze({
+        disposed,
+        active,
+        queued: queued().length,
+        stalled: [...jobs].filter((j) => j.active && j.closed).length,
+        subscribers: subscriberCount,
+        dedupeEntries: dedupe.size,
+        timers: [...jobs].reduce((n, j) => n + j.timers.size, 0),
+      });
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      for (const j of [...jobs]) {
+        close(j, cancelled);
+        for (const s of [...j.subscribers]) removeSubscriber(j, s);
+      }
+    },
+  };
+}

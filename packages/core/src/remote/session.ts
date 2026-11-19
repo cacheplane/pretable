@@ -30,6 +30,10 @@ export interface RemoteInvocation {
   /** Sensitive internal address; never log or persist it. */
   readonly key: string;
   readonly signal: PretableRemoteSignal;
+  /** Initial root read shares the scheduler focused tier. */
+  readonly root?: boolean;
+  /** Scheduler-only normalized failures after caller settlement; acceptance permits only scoped revocation. */
+  readonly onLateResult?: (result: PretableRemoteResult<unknown>) => void;
 }
 export interface RemoteLifecycleReset {
   readonly generation: number;
@@ -52,7 +56,7 @@ interface Options {
   readonly onReset?: (event: RemoteLifecycleReset) => void;
   readonly invoke?: <T>(
     operation: RemoteInvocation,
-    run: () => Promise<PretableRemoteResult<T>>,
+    run: (signal?: PretableRemoteSignal) => Promise<PretableRemoteResult<T>>,
   ) => Promise<PretableRemoteResult<T>>;
 }
 export interface RemoteSessionView<TRow extends object> {
@@ -200,9 +204,12 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     key: string,
     owner: AbortController,
     kind: RemoteInvocation["kind"],
-    run: () => Promise<PretableRemoteResult<T>>,
+    run: (signal: PretableRemoteSignal) => Promise<PretableRemoteResult<T>>,
+    root = false,
   ): Promise<PretableRemoteResult<T>> {
-    const guarded = async (): Promise<PretableRemoteResult<T>> => {
+    const guarded = async (
+      signal: PretableRemoteSignal = owner.signal,
+    ): Promise<PretableRemoteResult<T>> => {
       if (!owns(c, key, owner) || expired(c) || !owns(c, key, owner))
         return Promise.resolve<PretableRemoteResult<T>>({
           ok: false,
@@ -211,17 +218,42 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       invoked.add(owner);
       let raw: unknown;
       try {
-        raw = await run();
+        raw = await run(signal);
       } catch {
         return { ok: false, error: { code: "transient" } };
       }
-      return validateRemoteResult<T>(raw);
+      const result = validateRemoteResult<T>(raw);
+      // An abandoned open still owns a server resource, even when the scheduler
+      // has already settled its caller or been disposed. Cleanup stays with the
+      // physical provider call, and the acceptance path cannot release it twice.
+      if (
+        kind === "open" &&
+        result.ok &&
+        (signal.aborted || !owns(c, key, owner))
+      ) {
+        const abandoned = validateSession(
+          result.value as PretableRemoteSession,
+          c.queryKey,
+        );
+        if (abandoned.ok) release(abandoned.value);
+        return { ok: false, error: { code: "cancelled" } };
+      }
+      return result;
     };
     let answer: unknown;
     try {
       answer = await (options.invoke
         ? options.invoke(
-            { kind, generation: c.generation, key, signal: owner.signal },
+            {
+              kind,
+              root,
+              generation: c.generation,
+              key,
+              signal: owner.signal,
+              onLateResult: (result) => {
+                acceptRevocation(c, owner, validateRemoteResult(result));
+              },
+            },
             guarded,
           )
         : guarded());
@@ -452,8 +484,13 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       owner = ownerFor(c, key);
     if (!owns(c, key, owner)) return;
     c.requests.set(key, request);
-    const response = await invoke(c, key, owner, "read", () =>
-      provider.read(request, owner.signal),
+    const response = await invoke(
+      c,
+      key,
+      owner,
+      "read",
+      (signal) => provider.read(request, signal),
+      root,
     );
     if (
       acceptRevocation(c, owner, response) ||
@@ -571,8 +608,8 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     });
     if (!active(c)) return;
     const owner = ownerFor(c, "open");
-    const response = await invoke(c, "open", owner, "open", () =>
-      provider.open(query, prepared.queryKey, owner.signal),
+    const response = await invoke(c, "open", owner, "open", (signal) =>
+      provider.open(query, prepared.queryKey, signal),
     );
     if (acceptRevocation(c, owner, response)) return;
     if (!owns(c, "open", owner)) {
@@ -614,8 +651,8 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       const key = `summary:${scope}`,
         owner = ownerFor(c, key);
       if (!owns(c, key, owner)) return;
-      const response = await invoke(c, key, owner, "summary", () =>
-        provider.summary(c.session!, scope, owner.signal),
+      const response = await invoke(c, key, owner, "summary", (signal) =>
+        provider.summary(c.session!, scope, signal),
       );
       if (
         acceptRevocation(c, owner, response) ||
