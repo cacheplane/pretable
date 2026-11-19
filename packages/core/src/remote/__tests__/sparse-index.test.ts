@@ -139,3 +139,50 @@ it("enforces depth independently of topology cap and rejects unresolved ancestry
   expect(index.allocatedNodes).toBe(2);
   expect(index.rowCount).toBe(1);
 });
+
+it("keeps required expanded topology and intent after bounded store eviction", async () => {
+  const { RemoteCache } = await import("../cache");
+  const cache = new RemoteCache({ stores: 1 });
+  cache.openScope(1);
+  const index = new SparseIndex(10);
+  const group = Object.freeze({
+    id: "region",
+    parent: null,
+    ordinal: 1,
+    childCount: 1000000,
+  });
+  index.resolve(group);
+  index.setExpanded(group.id, true);
+  const first = cache.prepare({
+    records: [
+      {
+        scope: 1,
+        key: "topology:region",
+        kind: "topology",
+        value: group,
+        metadataBytes: 64,
+      },
+      { scope: 1, key: "expansion:region", kind: "expansion", value: true },
+      {
+        scope: 1,
+        key: "store:region",
+        kind: "store",
+        value: { route: "region" },
+        metadataBytes: 32,
+      },
+    ],
+  });
+  if (!first.ok) throw new Error(first.reason);
+  expect(cache.commit(first.plan)).toBe(true);
+  const next = cache.prepare({
+    records: [{ scope: 1, key: "store:other", kind: "store", value: {} }],
+  });
+  if (!next.ok) throw new Error(next.reason);
+  expect(cache.commit(next.plan)).toBe(true);
+  expect(next.plan.evictions.map((entry) => entry.kind)).toEqual(["store"]);
+  expect(cache.get(1, "topology:region")).toBe(group);
+  expect(cache.get(1, "expansion:region")).toBe(true);
+  expect(index.rank("region", 999999)).toBe(1000001);
+  expect(index.at(1000001)).toEqual({ parent: "region", ordinal: 999999 });
+  expect(index.allocatedNodes).toBe(2);
+});
