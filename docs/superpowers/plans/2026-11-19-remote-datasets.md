@@ -152,7 +152,14 @@ aggregate availability and unloaded/loading/error slot types are exported.
 build, ES2022-only consumer types, API freshness and lint passed. Full core suite
 passed 61 tests before the final test-only expansion. React overload checks
 remain intentionally in Task 10. See `status/remote-datasets/provider-contract.md`.
-Task 3 is in progress.
+Task 3 complete at `482ce289`: separate specification and quality reviews passed.
+The bounded reference provider implements immutable/fenced reads, exact grouped
+ranges, same-version summaries and atomic export capture with independent
+retention. Fence mutation returns expiry rather than a consistency contradiction.
+Website provider 18 tests (independently rerun), remote-core 71 tests, build,
+core/website typechecks and focused lint/format checks passed. See
+`status/remote-datasets/provider-feasibility.md` for limits and production scope.
+Task 4 is in progress.
 
 ## Tasks
 
@@ -180,11 +187,11 @@ Task 3 is in progress.
 
 **Files:** Create `apps/website/lib/remote-demo/dataset.ts`, `provider.ts`, `__tests__/provider.test.ts`; create `packages/core/src/remote/__tests__/fixtures/provider.ts`.
 
-- [ ] **Step 1:** Build a deterministic small orders fixture grouped region/customer with duplicate labels, typed keys, nulls and sortable aggregates. Capture a materialized version plus an authorized unfiltered base view; use explicit bounded TTL/storage.
-- [ ] **Step 2:** Write mutation-between-reads tests for immutable results and a coherent revision-fence fixture. Include inserts/deletes with unchanged counts, group moves, two queries sharing a revision, filtered/all totals and source/auth revocation. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement sorting/filtering/grouping and exact range/count/aggregate responses with stable tie-breaks. The revision-fence fixture reads fence and values atomically in one server operation. Prove export can pin an immutable version or materialize it atomically before later mutations; a latest-data traversal must fail the test. Document storage/TTL exhaustion as typed errors. Do not hold an indefinite database transaction or rely on per-process Next.js state across separate requests.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/app-website exec vitest run --environment jsdom lib/remote-demo/__tests__/provider.test.ts`. Expected: Both strategies either return coherent values or explicitly expire. A fixture-only backend is labelled as such; production adapters must provide durable version/job storage. No SQL is required for the fixture; any SQL example uses trusted schema mappings and parameters.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: add versioned grouped provider fixtures`.
+- [x] **Step 1:** Build a deterministic small orders fixture grouped region/customer with duplicate labels, typed keys, nulls and sortable aggregates. Capture a materialized version plus an authorized unfiltered base view; use explicit bounded TTL/storage.
+- [x] **Step 2:** Write mutation-between-reads tests for immutable results and a coherent revision-fence fixture. Include inserts/deletes with unchanged counts, group moves, two queries sharing a revision, filtered/all totals and source/auth revocation. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement sorting/filtering/grouping and exact range/count/aggregate responses with stable tie-breaks. The revision-fence fixture reads fence and values atomically in one server operation. Prove export can pin an immutable version or materialize it atomically before later mutations; a latest-data traversal must fail the test. Document storage/TTL exhaustion as typed errors. Do not hold an indefinite database transaction or rely on per-process Next.js state across separate requests.
+- [x] **Step 4:** Run `pnpm --filter @pretable/app-website exec vitest run --environment jsdom lib/remote-demo/__tests__/provider.test.ts`. Expected: Both strategies either return coherent values or explicitly expire. A fixture-only backend is labelled as such; production adapters must provide durable version/job storage. No SQL is required for the fixture; any SQL example uses trusted schema mappings and parameters.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: add versioned grouped provider fixtures`.
 
 ### Task 4: Sparse index and layout feasibility gate
 
