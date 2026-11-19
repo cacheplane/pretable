@@ -137,9 +137,12 @@ Repository inspection correction: Task 2 core type tests live under
 `type-tests/core/`, because `type-tests/tsconfig.json` includes that directory
 and would silently omit a file placed directly under `type-tests/`.
 
-Task 1 is in progress. Each task requires separate specification and code-quality
-review before its completion checkboxes are checked. Record review commits and
-observed test evidence here as execution proceeds.
+Task 1 complete at `c8786667`: separate specification and code-quality reviews
+passed. Layout 161, renderer 176, React 2,083, new matrix 11, legacy browser 10,
+and website production Chromium/WebKit 16 tests passed. Root independently
+reran formatting, targeted lint and React typecheck successfully. See
+`status/remote-datasets/baseline.md` for commands, geometry and the diagnosed
+development-only StrictMode request replay. Task 2 is in progress.
 
 ## Tasks
 
@@ -147,11 +150,11 @@ observed test evidence here as execution proceeds.
 
 **Files:** Existing tests listed in the spec window regression matrix; create `packages/react/src/__tests__/remote-window-compatibility.test.tsx` and `status/remote-datasets/baseline.md`.
 
-- [ ] **Step 1:** Run the existing layout, renderer, React and legacy browser commands before changing shared code; record SHA, commands, failures and geometric evidence in baseline.md. Investigate pre-existing failures separately rather than changing expectations.
-- [ ] **Step 2:** Add paired manual/local cases for nonzero window offsets, exact versus unknown totals, grouped/non-external downgrade, resultMeta-only boundary changes, datasetKey reset and simultaneous grid instances. Record legacy copy/CSV/edit behavior to preserve. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Keep current behavior unchanged; this task is a compatibility baseline, so already-covered passing cases need no duplicate tests. New remote-only assertions are introduced with their implementation tasks.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/remote-window-compatibility.test.tsx`. Expected: All manual/local cases pass; geometric browser checks intersect real viewport rectangles and use real pointer clicks.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `docs: record remote window compatibility baseline`.
+- [x] **Step 1:** Run the existing layout, renderer, React and legacy browser commands before changing shared code; record SHA, commands, failures and geometric evidence in baseline.md. Investigate pre-existing failures separately rather than changing expectations.
+- [x] **Step 2:** Add paired manual/local cases for nonzero window offsets, exact versus unknown totals, grouped/non-external downgrade, resultMeta-only boundary changes, datasetKey reset and simultaneous grid instances. Record legacy copy/CSV/edit behavior to preserve. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Keep current behavior unchanged; this task is a compatibility baseline, so already-covered passing cases need no duplicate tests. New remote-only assertions are introduced with their implementation tasks.
+- [x] **Step 4:** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/remote-window-compatibility.test.tsx`. Expected: All manual/local cases pass; geometric browser checks intersect real viewport rectangles and use real pointer clicks.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `docs: record remote window compatibility baseline`.
 
 ### Task 2: Provider types and public API feasibility
 
