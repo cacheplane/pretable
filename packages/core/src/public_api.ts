@@ -195,3 +195,36 @@ export type {
   PretableSummaryScope,
   PretableEngineSummary,
 } from "@pretable-internal/row-model";
+
+export {
+  canonicalRemoteRoute,
+  remoteGroupId,
+  remoteLeafId,
+  prepareRemoteQuery,
+} from "./remote/query";
+export type {
+  PretableRemoteKey,
+  PretableRemoteRouteSegment,
+  PretableRemoteRoute,
+  PretableRemoteSort,
+  PretableRemoteGroupSort,
+  PretableRemoteAggregate,
+  PretableRemoteQuery,
+  PretableRemoteCapabilities,
+  PretableRemoteError,
+  PretableRemoteResult,
+  PretableRemoteSignal,
+  PretableRemoteSession,
+  PretableRemoteGroup,
+  PretableRemoteAggregateValue,
+  PretableRemoteLeaf,
+  PretableRemoteNode,
+  PretableRemoteRangeRequest,
+  PretableRemoteRange,
+  PretableRemoteSummary,
+  PretableRemoteProvider,
+  PretableRemoteSlot,
+  PretableRemoteStatus,
+  PretableRemoteReadHandle,
+  PretableRemotePreparedQuery,
+} from "./remote/types";
