@@ -1,6 +1,6 @@
 # Task 9 b: integrated publication processing budget
 
-Status: functional optimization and staged accounting implemented; **final quiet-host 8 ms certification remains pending**. Earlier failures and intermediate evidence below are preserved.
+Status: functional optimization and staged accounting implemented. **Repeated default-100 diagnostics still fail the scheduled preparation-slice maximum; quiet-host verification remains pending. Task 9 b is not complete.** Earlier failures and intermediate evidence below are preserved.
 
 The original diagnostic and `layout-publication-performance.json` are preserved.
 `publication-before.json` reproduces 5000 resident group payloads, 5001 topology
@@ -237,3 +237,69 @@ identity scratch is covered by the existing request's4×operation-key-length and
 raw key text. New topology record/key ownership is charged by the incoming credit
 before allocating comparison or retention indexes. These sequential traversal
 allowances are not reused for a second response or retained candidate history.
+
+## Repeated final diagnostic evidence (not certification)
+
+`publication-diagnostic-series.json` contains three independent full-residency runs
+for each supported fixture, including raw commit/expansion/toggle samples, per-run
+maxima, initial/final public counters, host load and instrumentation details. Each
+run asserts5000 resident payloads and5001 topology nodes. The one-shot repeat command
+for a quiet-host rerun is:
+
+```sh
+REMOTE_PROBE_RUNS=3 node scripts/probe-remote-publication-series.mjs > /tmp/publication-series.json
+```
+
+The series prints observed gate results but deliberately does not certify host
+quietness. Establish quiet host conditions separately; do not discard failing runs.
+The same script can run up to20 independent repetitions. No memory limit, expansion
+limit, block fixture or8ms threshold is relaxed.
+
+| Measurement                                               | Supported1000 block fixture | Actual default100 block fixture |
+| --------------------------------------------------------- | --------------------------: | ------------------------------: |
+| Independent full-residency runs                           |                           3 |                               3 |
+| Admission commit samples                                  |                          15 |                             150 |
+| Admission commit p95                                      |                     2.902ms |                         4.884ms |
+| Complete commit-task p95, including continuations/cleanup |                     4.752ms |                         7.531ms |
+| Near-cap expansion p95 (144 samples)                      |                     6.322ms |                         6.878ms |
+| Collapse/expand p95 (90 samples)                          |                     6.851ms |                         6.499ms |
+| Scheduled preparation task maximum                        |                     2.857ms |                        15.901ms |
+| Observed commit-p95 gate (`<=8`)                          |                pass:6.851ms |                    pass:7.531ms |
+| Observed scheduled-slice-max gate (`<=8`)                 |                        pass |                        **FAIL** |
+| Accepted expansions at metadata boundary                  |                        1750 |                            1687 |
+| Final metadata bytes                                      |                   8,388,556 |                       8,388,322 |
+| Resident payload bytes                                    |                   3,721,128 |                       3,851,196 |
+| Viewport fill wall latency after bootstrap                |                   659–680ms |                     2923–3049ms |
+
+Both fixture groups retain5000 payloads/5001 topology nodes at their final boundary.
+The original supported1000 fixture admitted1808 expansions; the compact evidence
+charge (8bytes/entry+64/range) accounts for the reduction to1750. The default100
+fixture has50 range descriptors instead of five and admits1687. Transient incoming
+metadata credit disappears atomically at acceptance and does not change these final
+counters. The next expansion is explicitly refused at the unchanged8MiB ceiling.
+
+Provider delay is zero. Provider fixture CPU is measured separately and subtracted
+only from the callback or synchronous command containing that exact work. Fill wall
+latency includes real task yields and all processing after the viewport request; it
+starts after the bootstrap root has been accepted. The commit interval begins at
+payload-plan commit and ends in a queued microtask after synchronous validation
+evidence/publication. The whole-task metric sums consecutive model callbacks until
+the next Timeout/Immediate, including their microtask continuations. Fresh commit
+tasks are explicitly tagged and reported separately from preparation tasks. Trivial
+callbacks are never pooled into commit p95. Instrumentation overhead is retained.
+
+Default100 preparation maxima were15.901,7.044 and12.831ms across the three runs.
+Its synchronous demand processing was16.072,5.229 and4.849ms. The largest default100
+commit task was17.305ms; supported1000 toggle maximum was14.652ms. These maxima are
+preserved even where the approved commit-p95 gate passes. A commit maximum is not
+substituted for the specified p95 rule, and a preparation maximum is not diluted
+into a percentile. Host1-minute load ranged roughly7.7–10.6 on10 logical CPUs during
+this series. This is not a quiet-host run, and the evidence does not establish whether
+the remaining long slices are host pauses or product work. A quiet rerun must meet
+both gates; repeated long preparation slices then require profiling their phase.
+
+Functional spec and code-quality reviews through8bac387b found no actionable
+correctness issue. **The performance gate remains open, and Task10 must not begin.**
+No new integrated browser cadence claim is made by this headless probe. Existing
+layout/renderer regressions passed; physical touch/trackpad and integrated browser
+cadence remain the previously documented release gates when that integration exists.
