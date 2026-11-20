@@ -13,9 +13,10 @@
 ## Authority, scope and execution rules
 
 The [approved behavioral design](../specs/2026-11-19-remote-datasets-design.md)
-and its window compatibility matrix govern this plan. User authorization covers
-planning; this document does not report implementation, passing runtime tests, or
-measured defaults. Research is in
+and its window compatibility matrix govern this plan. The user authorized
+task-scoped implementation with review between tasks on 2026-11-19. Checkboxes
+record reviewed completion; unchecked tasks make no passing-test or measured-default
+claim. Research is in
 [the evidence report](../../research/2026-11-19-remote-datasets-research.md).
 
 Work in an isolated implementation worktree from the reviewed design branch;
@@ -124,97 +125,206 @@ otherwise targets production. If occupied, choose a free port and change both
 commands together. Run performance workloads only on a quiet
 machine, record environment/cadence, and do not loosen thresholds to clear a run.
 
+## Execution record
+
+Implementation branch: `blove/remote-datasets-implementation`, starting at
+`8ce27c8bd`. Worktree: `/Users/blove/repos/pretable/.worktrees/remote-datasets-implementation`.
+Original workspace remains on `blove/calendar-date-formatting-design`; its only
+tracked modification is `.gitignore`, verified against the preserved binary diff
+before implementation. No runtime source has changed at initialization.
+
+Repository inspection correction: Task 2 core type tests live under
+`type-tests/core/`, because `type-tests/tsconfig.json` includes that directory
+and would silently omit a file placed directly under `type-tests/`.
+
+Task 1 complete at `c8786667`: separate specification and code-quality reviews
+passed. Layout 161, renderer 176, React 2,083, new matrix 11, legacy browser 10,
+and website production Chromium/WebKit 16 tests passed. Root independently
+reran formatting, targeted lint and React typecheck successfully. See
+`status/remote-datasets/baseline.md` for commands, geometry and the diagnosed
+development-only StrictMode request replay.
+
+Task 2 complete through `3db37c1c`: specification and quality reviews passed,
+including incremental reviews of the final coverage additions. Query/provider
+contracts, exact range/count and summary capabilities, session identities,
+aggregate availability and unloaded/loading/error slot types are exported.
+69 query tests pass (independently rerun by the controller); core typecheck,
+build, ES2022-only consumer types, API freshness and lint passed. Full core suite
+passed 61 tests before the final test-only expansion. React overload checks
+remain intentionally in Task 10. See `status/remote-datasets/provider-contract.md`.
+Task 3 complete at `482ce289`: separate specification and quality reviews passed.
+The bounded reference provider implements immutable/fenced reads, exact grouped
+ranges, same-version summaries and atomic export capture with independent
+retention. Fence mutation returns expiry rather than a consistency contradiction.
+Website provider 18 tests (independently rerun), remote-core 71 tests, build,
+core/website typechecks and focused lint/format checks passed. See
+`status/remote-datasets/provider-feasibility.md` for limits and production scope.
+Task 4 complete through `576477ad`: specification and quality reviews passed.
+A quality-found max-safe-integer inverse-search termination bug was reproduced
+and fixed with a bounded regression. Focused 7 sparse-index and 8 remote-layout
+tests pass; unchanged layout suite 161 and renderer suite 183 passed before the
+final regression addition. Core/renderer builds/typechecks and lint passed.
+Chromium/WebKit measured a 33,554,428px CSS ceiling; an 8M physical mapping proves
+distant seeks, actual wheel movement and stable-ID anchoring. See
+`status/remote-datasets/layout-feasibility.md` and recorded browser evidence.
+The initial feasibility checkpoint is reviewed. Scheduled/incremental measurement
+work and full gesture integration remain Task 9 gates, not 8ms claims.
+Task 5 complete through `66ae5b0f`: separate specification and quality reviews
+passed after fixing reentrant lifecycle callbacks and malformed result envelopes.
+The controller validates before atomic publication, gates late responses, preserves
+coherent expiry views, and purges scoped revocation correctly. Validation evidence
+is evictable alongside payloads; scheduler invocation and expiry hooks are explicit.
+94 focused tests and 189 core tests pass; 18 reference-provider tests passed after
+the canonical definition-key update. Typecheck/build/API/lint/format checks passed.
+Task 6 complete through `3861a514`: specification and quality reviews passed.
+Scheduler enforces 4 physical requests, 64 queued demands including backoff,
+and bounded subscribers. Absolute dispatch/settlement deadlines, independent
+cancellation, late authority, once-only abandoned-open cleanup and reentrant
+cleanup are covered. Controller independently reran all 215 remote tests and core
+typecheck successfully; build/lint/diff checks passed. See
+`status/remote-datasets/scheduler.md` for ownership and clock contracts.
+Task 7 complete through `38cea14e`: specification and quality reviews passed.
+Standalone cache admission now shares payload, ingress and metadata budgets across
+two generations, preserves protected topology/intent and supports atomic epoch-checked
+admission. Mixed optional/visible pressure diagnostics were corrected after review.
+All 235 remote tests passed; independent cache/sparse verification passed 27 tests.
+Core build/typecheck/lint passed. Controller composition remains Task 8; no complete
+controller memory or quiet-machine performance claim is made.
+
+Task 8 complete through `7b6f8bb2`: specification and quality reviews passed.
+The public headless remote model composes accepted sessions, scheduler ingress,
+cache admission, sparse groups and versioned summaries. Review regressions fixed
+refused-summary retry, viewport metadata atomicity, bootstrap-root cancellation,
+and replay ownership across loading, unchanged queries and rejected commands.
+Fresh independent verification passed all 302 core tests, typecheck and lint;
+285 tests cover remote behavior. Public build, API and consumer checks passed.
+Original windowing runtime remains unchanged. Layout/browser/performance release
+gates remain open; this is not a completed remote grid release.
+
+Task 9 functional integration complete through `f4c877e8`, with fresh website
+verification in `c54453d8`. Specification and quality reviews passed this slice.
+Independent verification passed layout 163, renderer 201 and core 303 tests;
+23 React compatibility, 10 original Chromium window/eviction browser and all 16
+website production Chromium/WebKit server-data checks passed. Original local
+diff remains preserved. The integrated performance gate FAILED at valid default
+limits (expansion p95 34.773 ms); this is not a passed Tasks 5–9 checkpoint.
+Measurement/projection/viewport budget wiring remains an explicit Task 10 gate.
+
+Mandatory Task 9b is in progress; Task 10 must not start until it passes.
+Its functional scope is implemented and separately specification/quality reviewed
+through `8bac387b`: immutable geometry reuse, cooperative admission, compact
+evidence, cancellation/deadline cleanup and incoming metadata reservation.
+Core 356, layout 163 and renderer 201 tests pass, along with public types and API
+checks. Repeated loaded-host diagnostics preserve 5,000 payloads/5,001 topology
+nodes. The historical series fails the default-size preparation maximum (15.901 ms).
+Review then corrected preparation accounting within commit-bearing turns; corrected
+smoke evidence still fails one synchronous-command p95 (8.154 ms). Neither series
+certifies a quiet host. Quiet-host reproduction and any resulting fixes remain
+required. See `status/remote-datasets/publication-budget.md`.
+
 ## Tasks
 
 ### Task 1: Compatibility baseline and executable window matrix
 
 **Files:** Existing tests listed in the spec window regression matrix; create `packages/react/src/__tests__/remote-window-compatibility.test.tsx` and `status/remote-datasets/baseline.md`.
 
-- [ ] **Step 1:** Run the existing layout, renderer, React and legacy browser commands before changing shared code; record SHA, commands, failures and geometric evidence in baseline.md. Investigate pre-existing failures separately rather than changing expectations.
-- [ ] **Step 2:** Add paired manual/local cases for nonzero window offsets, exact versus unknown totals, grouped/non-external downgrade, resultMeta-only boundary changes, datasetKey reset and simultaneous grid instances. Record legacy copy/CSV/edit behavior to preserve. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Keep current behavior unchanged; this task is a compatibility baseline, so already-covered passing cases need no duplicate tests. New remote-only assertions are introduced with their implementation tasks.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/remote-window-compatibility.test.tsx`. Expected: All manual/local cases pass; geometric browser checks intersect real viewport rectangles and use real pointer clicks.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `docs: record remote window compatibility baseline`.
+- [x] **Step 1:** Run the existing layout, renderer, React and legacy browser commands before changing shared code; record SHA, commands, failures and geometric evidence in baseline.md. Investigate pre-existing failures separately rather than changing expectations.
+- [x] **Step 2:** Add paired manual/local cases for nonzero window offsets, exact versus unknown totals, grouped/non-external downgrade, resultMeta-only boundary changes, datasetKey reset and simultaneous grid instances. Record legacy copy/CSV/edit behavior to preserve. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Keep current behavior unchanged; this task is a compatibility baseline, so already-covered passing cases need no duplicate tests. New remote-only assertions are introduced with their implementation tasks.
+- [x] **Step 4:** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/remote-window-compatibility.test.tsx`. Expected: All manual/local cases pass; geometric browser checks intersect real viewport rectangles and use real pointer clicks.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `docs: record remote window compatibility baseline`.
 
 ### Task 2: Provider types and public API feasibility
 
-**Files:** Create `packages/core/src/remote/types.ts`, `query.ts`, `__tests__/query.test.ts`; modify `packages/core/src/public_api.ts`; create `type-tests/react/remote-model.types.tsx` and `type-tests/remote-model.types.ts`.
+**Files:** Create `packages/core/src/remote/types.ts`, `query.ts`, `__tests__/query.test.ts`; modify `packages/core/src/public_api.ts`; create `type-tests/react/remote-model.types.tsx` and `type-tests/core/remote-model.types.ts`.
 
-- [ ] **Step 1:** Write query identity cases for typed null/number/string keys, source/auth/schema changes, filters, group and leaf sorts, aggregate definitions, locale/projection/search and semantic registry versions.
-- [ ] **Step 2:** Add compile-time cases for rows/model inference remaining unchanged and remote versus manual-window/write inputs being exclusive; stage React type assertions with Task 10 if the surface overload is not yet present. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Define provider/result/group/leaf/status/error discriminated unions, capability negotiation and the remote read-only handle. Require exact root/child counts. Canonicalize every supported data dependency and reject unsupported query operators. Keep placeholders out of existing local unions. Freeze the minimum type contract after reviewing generated declaration shape.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/query.test.ts`. Expected: Identity tests pass without network access; unsupported capabilities fail before open/read dispatch. Record API decisions and unresolved names before downstream implementation.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: define grouped remote provider contracts`.
+- [x] **Step 1:** Write query identity cases for typed null/number/string keys, source/auth/schema changes, filters, group and leaf sorts, aggregate definitions, locale/projection/search and semantic registry versions.
+- [x] **Step 2:** Add compile-time cases for rows/model inference remaining unchanged and remote versus manual-window/write inputs being exclusive; stage React type assertions with Task 10 if the surface overload is not yet present. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Define provider/result/group/leaf/status/error discriminated unions, capability negotiation and the remote read-only handle. Require exact root/child counts. Canonicalize every supported data dependency and reject unsupported query operators. Keep placeholders out of existing local unions. Freeze the minimum type contract after reviewing generated declaration shape.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/query.test.ts`. Expected: Identity tests pass without network access; unsupported capabilities fail before open/read dispatch. Record API decisions and unresolved names before downstream implementation.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: define grouped remote provider contracts`.
 
 ### Task 3: Consistent reference provider and export feasibility
 
 **Files:** Create `apps/website/lib/remote-demo/dataset.ts`, `provider.ts`, `__tests__/provider.test.ts`; create `packages/core/src/remote/__tests__/fixtures/provider.ts`.
 
-- [ ] **Step 1:** Build a deterministic small orders fixture grouped region/customer with duplicate labels, typed keys, nulls and sortable aggregates. Capture a materialized version plus an authorized unfiltered base view; use explicit bounded TTL/storage.
-- [ ] **Step 2:** Write mutation-between-reads tests for immutable results and a coherent revision-fence fixture. Include inserts/deletes with unchanged counts, group moves, two queries sharing a revision, filtered/all totals and source/auth revocation. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement sorting/filtering/grouping and exact range/count/aggregate responses with stable tie-breaks. The revision-fence fixture reads fence and values atomically in one server operation. Prove export can pin an immutable version or materialize it atomically before later mutations; a latest-data traversal must fail the test. Document storage/TTL exhaustion as typed errors. Do not hold an indefinite database transaction or rely on per-process Next.js state across separate requests.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/app-website exec vitest run --environment jsdom lib/remote-demo/__tests__/provider.test.ts`. Expected: Both strategies either return coherent values or explicitly expire. A fixture-only backend is labelled as such; production adapters must provide durable version/job storage. No SQL is required for the fixture; any SQL example uses trusted schema mappings and parameters.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: add versioned grouped provider fixtures`.
+- [x] **Step 1:** Build a deterministic small orders fixture grouped region/customer with duplicate labels, typed keys, nulls and sortable aggregates. Capture a materialized version plus an authorized unfiltered base view; use explicit bounded TTL/storage.
+- [x] **Step 2:** Write mutation-between-reads tests for immutable results and a coherent revision-fence fixture. Include inserts/deletes with unchanged counts, group moves, two queries sharing a revision, filtered/all totals and source/auth revocation. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement sorting/filtering/grouping and exact range/count/aggregate responses with stable tie-breaks. The revision-fence fixture reads fence and values atomically in one server operation. Prove export can pin an immutable version or materialize it atomically before later mutations; a latest-data traversal must fail the test. Document storage/TTL exhaustion as typed errors. Do not hold an indefinite database transaction or rely on per-process Next.js state across separate requests.
+- [x] **Step 4:** Run `pnpm --filter @pretable/app-website exec vitest run --environment jsdom lib/remote-demo/__tests__/provider.test.ts`. Expected: Both strategies either return coherent values or explicitly expire. A fixture-only backend is labelled as such; production adapters must provide durable version/job storage. No SQL is required for the fixture; any SQL example uses trusted schema mappings and parameters.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: add versioned grouped provider fixtures`.
 
 ### Task 4: Sparse index and layout feasibility gate
 
 **Files:** Create `packages/core/src/remote/sparse-index.ts`, `__tests__/sparse-index.test.ts`; create `packages/renderer-dom/src/remote-layout.ts`, `__tests__/remote-layout.test.ts`; create `status/remote-datasets/layout-feasibility.md`.
 
-- [ ] **Step 1:** Write a small eager-tree oracle and seeded sequences of expand/collapse/rank lookup. Assert 20 + 10,000 + 50,000 = 60,020 display slots while resident payload remains bounded.
-- [ ] **Step 2:** Add disjoint branch ranges, root-only flat ranges, depth limits, unknown expansion ancestors, far seeks and repeated collapse/refetch. Count allocated index nodes for 1M versus 100M logical leaves at equal residency. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement compressed sibling intervals and subtree extents with bounded topology. Prototype variable-height anchoring and actual browser scroll-height ceilings before committing to geometry. If segmentation is necessary, specify explicit physical/logical mapping in the evidence file and test reveal, hit testing, telemetry and scroll round trips; retain the existing manual global-coordinate contract. Resolve this gate before React integration.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/sparse-index.test.ts`. Expected: Oracle ranks match after every operation; no per-unseen-row allocation. Run renderer tests and a browser probe to record geometric limits separately; unit tests do not prove browser feasibility.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: add sparse grouped projection index`.
+- [x] **Step 1:** Write a small eager-tree oracle and seeded sequences of expand/collapse/rank lookup. Assert 20 + 10,000 + 50,000 = 60,020 display slots while resident payload remains bounded.
+- [x] **Step 2:** Add disjoint branch ranges, root-only flat ranges, depth limits, unknown expansion ancestors, far seeks and repeated collapse/refetch. Count allocated index nodes for 1M versus 100M logical leaves at equal residency. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement compressed sibling intervals and subtree extents with bounded topology. Prototype variable-height anchoring and actual browser scroll-height ceilings before committing to geometry. If segmentation is necessary, specify explicit physical/logical mapping in the evidence file and test reveal, hit testing, telemetry and scroll round trips; retain the existing manual global-coordinate contract. Resolve this gate before React integration.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/sparse-index.test.ts`. Expected: Oracle ranks match after every operation; no per-unseen-row allocation. Run renderer tests and a browser probe to record geometric limits separately; unit tests do not prove browser feasibility.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: add sparse grouped projection index`.
 
 ### Task 5: Session acceptance and response validation
 
 **Files:** Create `packages/core/src/remote/session.ts`, `validate-response.ts`, `__tests__/session.test.ts`, `__tests__/validate-response.test.ts`.
 
-- [ ] **Step 1:** Write A→B→A, same-token different-query, same-range retry and independent out-of-order range cases with deferred promises and an abort-ignoring provider.
-- [ ] **Step 2:** Add wrong route/level, duplicate identity, short middle range, count mismatch, aggregate definition mismatch and contradictory overlap cases. Test late errors as well as late success. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement per-range ownership plus query/generation/session/token acceptance. Atomically publish a new root; keep at most one coherent stale view. Expiry freezes reads until explicit Refresh; contradiction removes untrustworthy data; auth revocation purges protected state. Clear selection when Refresh/query change starts even if the new token is unchanged. Release replaced sessions best effort.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/session.test.ts src/remote/__tests__/validate-response.test.ts`. Expected: Only current owners publish; independent ranges both succeed; malformed/contradictory responses cannot leak partial state.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: enforce remote session consistency`.
+- [x] **Step 1:** Write A→B→A, same-token different-query, same-range retry and independent out-of-order range cases with deferred promises and an abort-ignoring provider.
+- [x] **Step 2:** Add wrong route/level, duplicate identity, short middle range, count mismatch, aggregate definition mismatch and contradictory overlap cases. Test late errors as well as late success. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement per-range ownership plus query/generation/session/token acceptance. Atomically publish a new root; keep at most one coherent stale view. Expiry freezes reads until explicit Refresh; contradiction removes untrustworthy data; auth revocation purges protected state. Clear selection when Refresh/query change starts even if the new token is unchanged. Release replaced sessions best effort.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/session.test.ts src/remote/__tests__/validate-response.test.ts`. Expected: Only current owners publish; independent ranges both succeed; malformed/contradictory responses cannot leak partial state.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: enforce remote session consistency`.
 
 ### Task 6: Bounded scheduling and retries
 
 **Files:** Create `packages/core/src/remote/scheduler.ts`, `__tests__/scheduler.test.ts`.
 
-- [ ] **Step 1:** Use a fake clock to test focused demand before viewport, overscan and prefetch; coalesce superseded scroll ranges and deduplicate identical demands.
-- [ ] **Step 2:** Write four active/64 queued limit tests, abort-ignoring and never-settling providers, 250 ms/1 s retry delays, bounded retry-after, 30 s deadline, and disposal. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement explicit permits held until invoked promises settle, bounded queue ownership and initial-plus-two transient attempts. Invalid capability/response/auth/consistency errors never retry automatically. Timeout reports failure without freeing unsettled physical invocation capacity. Expose stalled-provider diagnostics and prevent replacement loops.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/scheduler.test.ts`. Expected: Request counters stay bounded under rapid scrolling, cancellation and disposal; no real sleeps are used in unit tests.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: schedule bounded remote range reads`.
+- [x] **Step 1:** Use a fake clock to test focused demand before viewport, overscan and prefetch; coalesce superseded scroll ranges and deduplicate identical demands.
+- [x] **Step 2:** Write four active/64 queued limit tests, abort-ignoring and never-settling providers, 250 ms/1 s retry delays, bounded retry-after, 30 s deadline, and disposal. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement explicit permits held until invoked promises settle, bounded queue ownership and initial-plus-two transient attempts. Invalid capability/response/auth/consistency errors never retry automatically. Timeout reports failure without freeing unsettled physical invocation capacity. Expose stalled-provider diagnostics and prevent replacement loops.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/scheduler.test.ts`. Expected: Request counters stay bounded under rapid scrolling, cancellation and disposal; no real sleeps are used in unit tests.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: schedule bounded remote range reads`.
 
 ### Task 7: Cache admission, metadata and measurement budgets
 
 **Files:** Create `packages/core/src/remote/cache.ts`, `__tests__/cache.test.ts`; extend sparse-index tests and `packages/renderer-dom/src/__tests__/remote-layout.test.ts`.
 
-- [ ] **Step 1:** Write separate payload byte/entry, ingress reservation, branch-store, topology, expansion, selected-ID and measurement cap tests using oversized keys and payloads.
-- [ ] **Step 2:** Cover current plus retiring sessions sharing budgets, offscreen eviction, visible-set-too-large errors, failed admission without refetch loops and externally retained snapshots. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Implement atomic admission and global accounting, cold payload eviction and bounded measurement LRU. Preserve required topology across store eviction. Refuse new expansion/selection rather than silently discarding intent. Release the stale body if it blocks new-root admission. Distinguish estimated accounted size from observed heap and require provider response limits.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/cache.test.ts src/remote/__tests__/sparse-index.test.ts`. Expected: All documented cardinality/size budgets hold; eviction never changes record identity or expanded ranks. Re-estimation after measurement eviction corrects anchors within tested tolerance.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: bound remote cache and topology retention`.
+- [x] **Step 1:** Write separate payload byte/entry, ingress reservation, branch-store, topology, expansion, selected-ID and measurement cap tests using oversized keys and payloads.
+- [x] **Step 2:** Cover current plus retiring sessions sharing budgets, offscreen eviction, visible-set-too-large errors, failed admission without refetch loops and externally retained snapshots. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Implement atomic admission and global accounting, cold payload eviction and bounded measurement LRU. Preserve required topology across store eviction. Refuse new expansion/selection rather than silently discarding intent. Release the stale body if it blocks new-root admission. Distinguish estimated accounted size from observed heap and require provider response limits.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/cache.test.ts src/remote/__tests__/sparse-index.test.ts`. Expected: All documented cardinality/size budgets hold; eviction never changes record identity or expanded ranks. Re-estimation after measurement eviction corrects anchors within tested tolerance.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: bound remote cache and topology retention`.
 
 ### Task 8: Read model composition and summary provenance
 
 **Files:** Create `packages/core/src/remote/create-remote-model.ts`, `summaries.ts`, `__tests__/model.test.ts`, `__tests__/summaries.test.ts`; modify `packages/core/src/public_api.ts`.
 
-- [ ] **Step 1:** Write headless consumer tests that subscribe, change query, expand, demand a viewport, retry and dispose. Assert synchronous reads dispatch no network work.
-- [ ] **Step 2:** Cover filtered versus all-scope keyed totals, unsupported same-version base summary, stale answers, failed aggregates, width-only changes and definition changes. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Compose session, scheduler, cache and index with immutable publication and explicit lifecycle. Preserve 0.21.0 summary provenance and aggregateDefinitionKey; never compute server totals from cached pages. Export unavailable/error distinctly from zero. Expose counters and loaded-entry iteration without scanning the logical extent.
-- [ ] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/model.test.ts src/remote/__tests__/summaries.test.ts`. Expected: Headless browsing works with the reference fixture, all summary scopes stay coherent, and disposal cannot publish or retain controller history.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: compose remote read model and summaries`.
+- [x] **Step 1:** Write headless consumer tests that subscribe, change query, expand, demand a viewport, retry and dispose. Assert synchronous reads dispatch no network work.
+- [x] **Step 2:** Cover filtered versus all-scope keyed totals, unsupported same-version base summary, stale answers, failed aggregates, width-only changes and definition changes. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Compose session, scheduler, cache and index with immutable publication and explicit lifecycle. Preserve 0.21.0 summary provenance and aggregateDefinitionKey; never compute server totals from cached pages. Export unavailable/error distinctly from zero. Expose counters and loaded-entry iteration without scanning the logical extent.
+- [x] **Step 4:** Run `pnpm --filter @pretable/core exec vitest run src/remote/__tests__/model.test.ts src/remote/__tests__/summaries.test.ts`. Expected: Headless browsing works with the reference fixture, all summary scopes stay coherent, and disposal cannot publish or retain controller history.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `feat: compose remote read model and summaries`.
 
 ### Task 9: Shared layout adapter without manual regressions
 
 **Files:** Create `packages/layout-core/src/read-layout.ts`; modify `packages/layout-core/src/index.ts`, `viewport-plan.ts` and `packages/renderer-dom/src/row-layout-controller.ts` only as required; extend `remote-layout.ts` and its tests.
 
-- [ ] **Step 1:** Write paired local/manual/remote read-adapter tests for equal materialized rows, then sparse branches, nonzero offsets, width/theme changes, measurement retention and far reveal.
-- [ ] **Step 2:** Assert published scrollTop and row top share coordinates, correct viewport intersection, clamping, hit testing and telemetry. Cover metadata-only updates using one committed geometry snapshot. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Introduce a structural read seam that preserves existing local fast paths and window spacers. Route remote ranges through the sparse layout mapping validated in Task 4. Reuse anchor/measurement primitives where proven; do not make the local model understand remote loading states.
-- [ ] **Step 4:** Run `pnpm --filter @pretable-internal/layout-core test && pnpm --filter @pretable-internal/renderer-dom test`. Expected: All original window/eviction tests pass unchanged, alongside remote tests; no arbitrary coordinate arithmetic is duplicated in React.
-- [ ] **Step 5:** Review the diff, stage only this task's files and commit as `refactor: share layout reads with remote projection`.
+- [x] **Step 1:** Write paired local/manual/remote read-adapter tests for equal materialized rows, then sparse branches, nonzero offsets, width/theme changes, measurement retention and far reveal.
+- [x] **Step 2:** Assert published scrollTop and row top share coordinates, correct viewport intersection, clamping, hit testing and telemetry. Cover metadata-only updates using one committed geometry snapshot. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
+- [x] **Step 3:** Introduce a structural read seam that preserves existing local fast paths and window spacers. Route remote ranges through the sparse layout mapping validated in Task 4. Reuse anchor/measurement primitives where proven; do not make the local model understand remote loading states.
+- [x] **Step 4:** Run `pnpm --filter @pretable-internal/layout-core test && pnpm --filter @pretable-internal/renderer-dom test`. Expected: All original window/eviction tests pass unchanged, alongside remote tests; no arbitrary coordinate arithmetic is duplicated in React.
+- [x] **Step 5:** Review the diff, stage only this task's files and commit as `refactor: share layout reads with remote projection`.
+
+### Task 9b: Bound integrated remote publication work before React
+
+**Required checkpoint:** Task 9 diagnostic evidence found synchronous expansion at approximately 25–40 ms in a valid default-budget state (5,000 resident groups, 5,001 topology nodes, 1,808 expansions, 8,388,024 metadata bytes). Isolated suboperations below 8 ms do not satisfy the integrated processing gate. This task must pass before Task 10; the Tasks 5–9 checkpoint remains open until then.
+
+**Files:** Refine `packages/core/src/remote/{cache,model-retention,model-view,create-remote-model,sparse-index,validate-response,session}.ts` only as needed; add focused work-budget/lifecycle tests; extend `scripts/probe-remote-publication-performance.mjs` and status evidence.
+
+- [x] **Step 1:** Reproduce the integrated default-budget failure with actual public-model counters, not an impossible combination of independent maximum limits. Separate provider latency, synchronous processing turns and total fill latency. Preserve the original threshold and fixture evidence.
+- [x] **Step 2:** Add deterministic work-bound and atomic-publication regressions for expansion/collapse, response admission, metadata-only changes, supersession, source/auth replacement and disposal during preparation. Test temporary reservations and failed admission without retained historical candidates. Observe relevant failures before implementation.
+- [x] **Step 3:** Remove redundant whole-state preparation/publication and use incremental/persistent structures or bounded cooperative preparation where needed. Reuse only immutable compatible state. Preserve immediate collapse semantics, exact accepted projection, stable IDs, shared memory budgets, bootstrap ownership, pending-demand replay and server-summary provenance. Do not introduce a render-time fetch or weaken consistency to meet timing.
+- [ ] **Step 4:** Run all core remote and affected layout/renderer regressions, public type/API checks, and the integrated quiet-host probe at supported default residency. Preserve the existing gate semantics in `scripts/bench-row-model-gate.mjs`: commit p95 at most 8 ms and maximum scheduled rebuild slice at most 8 ms, plus the measured-cadence frame/correctness checks when browser integration is present. Report end-to-end latency separately. Explicitly distinguish custom raised-limit workloads and unavailable quiet-host evidence.
+- [ ] **Step 5:** Complete separate specification and quality reviews; commit as `perf: bound integrated remote publication work`. Do not proceed to React integration while this gate is known to fail.
 
 ### Task 10: React remote ownership and read-only surface
 
@@ -222,7 +332,7 @@ machine, record environment/cadence, and do not loosen thresholds to clear a run
 
 - [ ] **Step 1:** Write remote input rendering and type cases, including rows/local model/manual window conflicts. Instrument every editor predicate/renderer/parser/validator/setter to throw if invoked.
 - [ ] **Step 2:** Test external headless ownership versus React-created ownership, StrictMode mount/unmount, simultaneous manual and remote grids, source/auth change and no render-time requests. Run the relevant new test before implementation and confirm a behavioral failure (not a missing dependency or broken runner).
-- [ ] **Step 3:** Bind immutable reads and viewport demand outside render. Reject write callbacks and mixed inputs before rendering. Keep shared editor-configured columns inert. Preserve drop-in viewport ownership; explicitly review whether the existing drop-in accepts a managed model and add its inference cases without exposing manual telemetry it does not own. No second windowGap fetch loop.
+- [ ] **Step 3:** Wire the Task 9 transactional measurement and resident-rank projection admission seams to the remote model's authoritative metadata budget; reserve viewport/status buffers before allocation and test shared accounting, denial/eviction, source replacement, disposal and StrictMode ownership. A second independent measurement cache does not satisfy global retention limits. Bind immutable reads and viewport demand outside render. Reject write callbacks and mixed inputs before rendering. Keep shared editor-configured columns inert. Preserve drop-in viewport ownership; explicitly review whether the existing drop-in accepts a managed model and add its inference cases without exposing manual telemetry it does not own. No second windowGap fetch loop.
 - [ ] **Step 4:** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/remote-surface.test.tsx src/__tests__/remote-window-compatibility.test.tsx`. Expected: Provider call counts show one request owner; edit callbacks remain untouched; local/manual editing and inference pass. Run pnpm typecheck:public after adding the React overload.
 - [ ] **Step 5:** Review the diff, stage only this task's files and commit as `feat: integrate read-only remote grid surface`.
 
@@ -301,7 +411,7 @@ machine, record environment/cadence, and do not loosen thresholds to clear a run
 - After Tasks 1–4: review API and provider/layout feasibility evidence before
   shared layout integration. If the approach cannot satisfy variable heights,
   exact projection or versioned export, revise the technical design explicitly.
-- After Tasks 5–9: headless correctness and unchanged legacy layout are required.
+- After Tasks 5–9 and mandatory Task 9b: headless correctness, unchanged legacy layout and the integrated 8 ms processing gate are required before React integration.
 - After Tasks 10–14: review the working grouped browsing and complete export UX.
 - After Tasks 15–17: review release evidence; implementation is not complete while
   any required compatibility, screen-reader, performance or export gate is open.

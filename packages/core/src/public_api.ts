@@ -195,3 +195,50 @@ export type {
   PretableSummaryScope,
   PretableEngineSummary,
 } from "@pretable-internal/row-model";
+
+export {
+  canonicalRemoteRoute,
+  remoteAggregateDefinitionKey,
+  remoteGroupId,
+  remoteLeafId,
+  prepareRemoteQuery,
+} from "./remote/query";
+export type {
+  PretableRemoteKey,
+  PretableRemoteRouteSegment,
+  PretableRemoteRoute,
+  PretableRemoteSort,
+  PretableRemoteGroupSort,
+  PretableRemoteAggregate,
+  PretableRemoteQuery,
+  PretableRemoteCapabilities,
+  PretableRemoteError,
+  PretableRemoteResult,
+  PretableRemoteSignal,
+  PretableRemoteSession,
+  PretableRemoteGroup,
+  PretableRemoteAggregateValue,
+  PretableRemoteLeaf,
+  PretableRemoteNode,
+  PretableRemoteRangeRequest,
+  PretableRemoteRange,
+  PretableRemoteSummary,
+  PretableRemoteProvider,
+  PretableRemoteSlot,
+  PretableRemoteStatus,
+  PretableRemoteReadHandle,
+  PretableRemotePreparedQuery,
+} from "./remote/types";
+
+export { createRemoteModel } from "./remote/create-remote-model";
+export type {
+  PretableRemoteModel,
+  PretableRemoteModelOptions,
+  PretableRemoteModelLimits,
+  PretableRemoteModelSnapshot,
+  PretableRemoteViewport,
+  PretableRemoteLoadedEntry,
+  PretableRemoteDiagnostics,
+  PretableRemoteCapacity,
+} from "./remote/model-types";
+export type { PretableRemoteSummaryAnswer } from "./remote/summaries";

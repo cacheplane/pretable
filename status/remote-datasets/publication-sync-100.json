@@ -1,0 +1,79 @@
+{
+  "recordedAt": "2026-11-19T23:32:59.306Z",
+  "loadavg": [
+    7.86962890625,
+    7.56884765625,
+    7.53271484375
+  ],
+  "blockSize": 100,
+  "providerDelayMs": 0,
+  "providerPreparationMs": 12.027541000000241,
+  "demandCommandMs": 36.463333000000006,
+  "fillProcessingCallbacks": {
+    "min": 0.00008299999990413198,
+    "p50": 0.001167000000009466,
+    "p95": 17.553500000000042,
+    "max": 41.47308399999997
+  },
+  "initial": {
+    "scopes": 1,
+    "payloadEntries": 5000,
+    "payloadBytes": 3851196,
+    "metadataBytes": 7196720,
+    "ingressBytes": 0,
+    "topology": 5001,
+    "expansions": 0,
+    "stores": 1,
+    "active": 0,
+    "queued": 0,
+    "subscribers": 0,
+    "evidenceNodes": 5000,
+    "listeners": 0
+  },
+  "final": {
+    "scopes": 1,
+    "payloadEntries": 5000,
+    "payloadBytes": 3851196,
+    "metadataBytes": 8388340,
+    "ingressBytes": 0,
+    "topology": 5001,
+    "expansions": 1750,
+    "stores": 1,
+    "active": 0,
+    "queued": 0,
+    "subscribers": 0,
+    "evidenceNodes": 5000,
+    "listeners": 0,
+    "capacity": "metadata-capacity"
+  },
+  "fillMs": 1107.1384580000001,
+  "acceptedExpansions": 1750,
+  "refusal": {
+    "scopes": 1,
+    "payloadEntries": 5000,
+    "payloadBytes": 3851196,
+    "metadataBytes": 8388340,
+    "ingressBytes": 0,
+    "topology": 5001,
+    "expansions": 1750,
+    "stores": 1,
+    "active": 0,
+    "queued": 0,
+    "subscribers": 0,
+    "evidenceNodes": 5000,
+    "listeners": 0,
+    "capacity": "metadata-capacity"
+  },
+  "expansionNearCapacity": {
+    "min": 3.8983330000000933,
+    "p50": 4.25458400000025,
+    "p95": 5.794916999999259,
+    "max": 5.975916999999754
+  },
+  "toggle": {
+    "min": 3.8583749999997963,
+    "p50": 4.2835829999985435,
+    "p95": 5.716042000000016,
+    "max": 5.845666999999594
+  }
+}

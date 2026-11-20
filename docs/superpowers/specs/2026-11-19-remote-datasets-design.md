@@ -228,7 +228,12 @@ silently interpreted as exhaustion. Reject duplicate/conflicting node IDs,
 wrong routes/levels, counts smaller than the returned extent, and mixed tokens.
 Across responses for the same token, route, scope, and aggregate definition,
 repeated resolved counts/aggregate answers and overlapping entries must agree. A contradiction is a session-consistency error,
-not a last-response-wins merge. Opening the session supplies the exact root
+not a last-response-wins merge. This is a session-wide provider obligation;
+client contradiction checks compare retained evidence, not an unbounded history
+of every visited record. Payload overlap evidence is evictable and accounted
+alongside the cache; required active topology/count/aggregate evidence has its
+own bounded ownership. The client cannot prove equality with forgotten payloads,
+so eviction never substitutes for backend version enforcement. Opening the session supplies the exact root
 sibling count. Every group node supplies its exact immediate-child count before
 it can be expanded; fetching children must confirm that count for the same token.
 This prevents an expanded-but-uncountable branch in the first supported mode.
@@ -266,7 +271,13 @@ Keep five concepts separate:
 | Request/range ownership | Which attempt may publish a particular range                                  |
 
 A request may commit only if all relevant identities still match. Apply the same
-checks to errors, cache hits, retries, and summary results. Independent ranges
+checks to errors, cache hits, retries, and summary results. Authoritative
+session revocation has one scoped exception: cancellation, range supersession or
+expiry cannot hide revocation of a matching session whose protected data is still
+owned. Match session/query/token identity to the current or retiring view. Purge
+only that matching data; revocation of a retiring view does not cancel a newer
+candidate. Responses for obsolete sessions with no retained data stay ignored,
+and range-local denial does not get this exception. Independent ranges
 may finish out of order; one global last-request counter must not discard valid
 parallel branch reads. Aborting obsolete work is an optimization, not proof that
 its result cannot arrive. Tests must include providers that ignore abort.

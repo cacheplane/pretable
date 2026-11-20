@@ -1,0 +1,322 @@
+{
+  "recordedAt": "2026-11-19T23:13:56.952Z",
+  "evidence": [
+    {
+      "engine": "chromium",
+      "version": "158.0.8127.18",
+      "caps": [
+        {
+          "requested": 1000000,
+          "scrollHeight": 1000000,
+          "maxScrollTop": 999400,
+          "rectHeight": 1000000
+        },
+        {
+          "requested": 8000000,
+          "scrollHeight": 8000000,
+          "maxScrollTop": 7999400,
+          "rectHeight": 8000000
+        },
+        {
+          "requested": 16000000,
+          "scrollHeight": 16000000,
+          "maxScrollTop": 15999400,
+          "rectHeight": 16000000
+        },
+        {
+          "requested": 32000000,
+          "scrollHeight": 32000000,
+          "maxScrollTop": 31999400,
+          "rectHeight": 32000000
+        },
+        {
+          "requested": 64000000,
+          "scrollHeight": 33554428,
+          "maxScrollTop": 33553828,
+          "rectHeight": 33554428
+        },
+        {
+          "requested": 1000000000,
+          "scrollHeight": 33554428,
+          "maxScrollTop": 33553828,
+          "rectHeight": 33554428
+        }
+      ],
+      "distant": {
+        "scrollTop": 1599999520,
+        "domScrollTop": 6399520,
+        "firstIntersecting": {
+          "id": "slot-79999976",
+          "rank": 79999976,
+          "logicalTop": 1599999520,
+          "top": 0,
+          "height": 20,
+          "intersects": true
+        },
+        "hit": "slot-79999976"
+      },
+      "wheel": {
+        "scrollTop": 1599999560,
+        "domScrollTop": 6399520,
+        "firstIntersecting": {
+          "id": "slot-79999978",
+          "rank": 79999978,
+          "logicalTop": 1599999560,
+          "top": 0,
+          "height": 20,
+          "intersects": true
+        },
+        "hit": "slot-79999978"
+      },
+      "keyboard": {
+        "scrollTop": 1600000140,
+        "domScrollTop": 6399523,
+        "firstIntersecting": {
+          "id": "slot-80000007",
+          "rank": 80000007,
+          "logicalTop": 1600000140,
+          "top": 0,
+          "height": 20,
+          "intersects": true
+        },
+        "hit": "slot-80000007"
+      },
+      "normalized": {
+        "before": 1600000140,
+        "results": [
+          {
+            "prevented": true,
+            "scrollTop": 1600000180
+          },
+          {
+            "prevented": true,
+            "scrollTop": 1600000480
+          },
+          {
+            "prevented": true,
+            "scrollTop": 1600000480.25
+          },
+          {
+            "prevented": false,
+            "scrollTop": 1600000480.25
+          }
+        ]
+      },
+      "touch": {
+        "evidence": "Chromium protocol-dispatched touch; not physical-device momentum",
+        "delta": 40
+      },
+      "anchors": {
+        "before": {
+          "scrollTop": 1600000007,
+          "domScrollTop": 6399522,
+          "firstIntersecting": {
+            "id": "anchor",
+            "rank": 80000000,
+            "logicalTop": 1600000000,
+            "top": -7,
+            "height": 20,
+            "intersects": true
+          },
+          "hit": "anchor"
+        },
+        "after": {
+          "scrollTop": 1000000077,
+          "domScrollTop": 5713860,
+          "firstIntersecting": {
+            "id": "anchor",
+            "rank": 50000000,
+            "logicalTop": 1000000070,
+            "top": -7,
+            "height": 20,
+            "intersects": true
+          },
+          "hit": "anchor"
+        },
+        "invalidated": {
+          "scrollTop": 1000000007,
+          "domScrollTop": 5713860,
+          "firstIntersecting": {
+            "id": "anchor",
+            "rank": 50000000,
+            "logicalTop": 1000000000,
+            "top": -7,
+            "height": 20,
+            "intersects": true
+          },
+          "hit": "anchor"
+        }
+      },
+      "roundTrip": {
+        "expected": 1399999400,
+        "returned": 1399999400,
+        "lastIntersecting": {
+          "id": "slot-69999999",
+          "rank": 69999999,
+          "logicalTop": 1399999980,
+          "top": 580,
+          "height": 20,
+          "intersects": true
+        }
+      }
+    },
+    {
+      "engine": "webkit",
+      "version": "27.2",
+      "caps": [
+        {
+          "requested": 1000000,
+          "scrollHeight": 1000000,
+          "maxScrollTop": 999400,
+          "rectHeight": 1000000
+        },
+        {
+          "requested": 8000000,
+          "scrollHeight": 8000000,
+          "maxScrollTop": 7999400,
+          "rectHeight": 8000000
+        },
+        {
+          "requested": 16000000,
+          "scrollHeight": 16000000,
+          "maxScrollTop": 15999400,
+          "rectHeight": 16000000
+        },
+        {
+          "requested": 32000000,
+          "scrollHeight": 32000000,
+          "maxScrollTop": 31999400,
+          "rectHeight": 32000000
+        },
+        {
+          "requested": 64000000,
+          "scrollHeight": 33554428,
+          "maxScrollTop": 33553828,
+          "rectHeight": 33554428
+        },
+        {
+          "requested": 1000000000,
+          "scrollHeight": 33554428,
+          "maxScrollTop": 33553828,
+          "rectHeight": 33554428
+        }
+      ],
+      "distant": {
+        "scrollTop": 1599999520,
+        "domScrollTop": 6399520,
+        "firstIntersecting": {
+          "id": "slot-79999976",
+          "rank": 79999976,
+          "logicalTop": 1599999520,
+          "top": 0,
+          "height": 20,
+          "intersects": true
+        },
+        "hit": "slot-79999976"
+      },
+      "wheel": {
+        "scrollTop": 1599999560,
+        "domScrollTop": 6399520,
+        "firstIntersecting": {
+          "id": "slot-79999978",
+          "rank": 79999978,
+          "logicalTop": 1599999560,
+          "top": 0,
+          "height": 20,
+          "intersects": true
+        },
+        "hit": "slot-79999978"
+      },
+      "keyboard": {
+        "scrollTop": 1600000140,
+        "domScrollTop": 6399522,
+        "firstIntersecting": {
+          "id": "slot-80000007",
+          "rank": 80000007,
+          "logicalTop": 1600000140,
+          "top": 0,
+          "height": 20,
+          "intersects": true
+        },
+        "hit": "slot-80000007"
+      },
+      "normalized": {
+        "before": 1600000140,
+        "results": [
+          {
+            "prevented": true,
+            "scrollTop": 1600000180
+          },
+          {
+            "prevented": true,
+            "scrollTop": 1600000480
+          },
+          {
+            "prevented": true,
+            "scrollTop": 1600000480.25
+          },
+          {
+            "prevented": false,
+            "scrollTop": 1600000480.25
+          }
+        ]
+      },
+      "touch": {
+        "evidence": "unavailable: physical-device touch/trackpad inertia not exercised"
+      },
+      "anchors": {
+        "before": {
+          "scrollTop": 1600000007,
+          "domScrollTop": 6399521,
+          "firstIntersecting": {
+            "id": "anchor",
+            "rank": 80000000,
+            "logicalTop": 1600000000,
+            "top": -7,
+            "height": 20,
+            "intersects": true
+          },
+          "hit": "anchor"
+        },
+        "after": {
+          "scrollTop": 1000000077,
+          "domScrollTop": 5713859,
+          "firstIntersecting": {
+            "id": "anchor",
+            "rank": 50000000,
+            "logicalTop": 1000000070,
+            "top": -7,
+            "height": 20,
+            "intersects": true
+          },
+          "hit": "anchor"
+        },
+        "invalidated": {
+          "scrollTop": 1000000007,
+          "domScrollTop": 5713859,
+          "firstIntersecting": {
+            "id": "anchor",
+            "rank": 50000000,
+            "logicalTop": 1000000000,
+            "top": -7,
+            "height": 20,
+            "intersects": true
+          },
+          "hit": "anchor"
+        }
+      },
+      "roundTrip": {
+        "expected": 1399999400,
+        "returned": 1399999400,
+        "lastIntersecting": {
+          "id": "slot-69999999",
+          "rank": 69999999,
+          "logicalTop": 1399999980,
+          "top": 580,
+          "height": 20,
+          "intersects": true
+        }
+      }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import {
   createRowHeightIndex,
-  planViewport,
+  readLayout,
   type RowHeightAnchor,
   type RowHeightIndex,
   type RowHeightOperation,
@@ -946,7 +946,8 @@ export function createRowLayoutController<
         requestedViewport,
         requestedScrollTop,
       );
-      const plan = planViewport({
+      const plan = readLayout({
+        readRange: (start, end) => snapshot.range(start, end),
         // Straight through: `planViewport` already speaks GLOBAL, and does its
         // own subtraction of `leadingHeight` to reach the loaded window's
         // local offsets. `clampedScrollTop` is the value this method returns
@@ -959,7 +960,7 @@ export function createRowLayoutController<
         leadingHeight,
         trailingHeight,
       });
-      const rows = snapshot.range(plan.range.start, plan.range.end);
+      const rows = plan.values;
       if (rows.length !== plan.range.end - plan.range.start) {
         throw new RowLayoutControllerError(
           "layout-failed",
@@ -1025,7 +1026,9 @@ export function createRowLayoutController<
       }
       const window = plan.rows.map((geometry, offset) =>
         Object.freeze({
-          ...geometry,
+          index: geometry.index,
+          top: geometry.top,
+          height: geometry.height,
           ref: pooledRowRef(rows[offset]!, slots?.[offset]),
           row: rows[offset]!,
         }),

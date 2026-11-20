@@ -4,6 +4,9 @@
 
 ```ts
 
+// @public
+export function canonicalRemoteRoute(route: PretableRemoteRoute): string;
+
 // @public (undocumented)
 export type ColumnAggregateValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: TColumnId;
@@ -126,6 +129,9 @@ export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extend
 }> : never;
 
 // @public
+export function createRemoteModel<TRow extends object, TColumns>(provider: PretableRemoteProvider<TRow, TColumns>, options?: PretableRemoteModelOptions): PretableRemoteModel<TRow, TColumns>;
+
+// @public
 export function describeRowSelection<TRowId extends PretableRowId>(rows: PretableIndexedRowSelection<TRowId>): PretableRowSelectionState<TRowId>;
 
 // @public (undocumented)
@@ -153,6 +159,9 @@ export const numberFormats: {
     readonly money: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
     readonly accounting: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
 };
+
+// @public
+export function prepareRemoteQuery<TColumns>(query: PretableRemoteQuery<TColumns>, capabilities: PretableRemoteCapabilities): PretableRemotePreparedQuery;
 
 // @public (undocumented)
 export interface PretableAggregateFormatInput<TValue, TColumn> {
@@ -1047,6 +1056,451 @@ export class PretableReentrantMutationError extends PretableRowModelError {
 }
 
 // @public
+export interface PretableRemoteAggregate<TColumns> {
+    // (undocumented)
+    readonly columnId: ColumnIdOf<TColumns>;
+    // (undocumented)
+    readonly id: string;
+}
+
+// @public
+export type PretableRemoteAggregateValue = {
+    readonly aggregateDefinitionKey: string;
+    readonly authority: "server";
+} & ({
+    readonly state: "ready";
+    readonly completeness: "complete" | "partial";
+    readonly value: unknown;
+} | {
+    readonly state: "unavailable";
+} | {
+    readonly state: "error";
+    readonly error: PretableRemoteError;
+});
+
+// @public
+export interface PretableRemoteCapabilities {
+    // (undocumented)
+    readonly aggregates: readonly string[];
+    // (undocumented)
+    readonly comparisons: readonly string[];
+    // (undocumented)
+    readonly consistency: "immutable" | "versioned" | "revision-fence";
+    // (undocumented)
+    readonly exactCounts: true;
+    // (undocumented)
+    readonly fields: Readonly<Record<string, {
+        readonly type: PretableColumnType;
+        readonly operators: readonly string[];
+    }>>;
+    // (undocumented)
+    readonly maxGroupDepth: number;
+    // (undocumented)
+    readonly maxRangeSize: number;
+    // (undocumented)
+    readonly rangeAccess: "ordinal";
+    // (undocumented)
+    readonly search: boolean;
+    readonly summaries: {
+        readonly filtered: "same-version" | "unavailable";
+        readonly all: "same-version" | "unavailable";
+    };
+}
+
+// @public
+export type PretableRemoteCapacity = "invalid-cost" | "stale-plan" | "unknown-scope" | "payload-capacity" | "metadata-capacity" | "minimum-visible-too-large" | "intent-capacity";
+
+// @public
+export interface PretableRemoteDiagnostics {
+    // (undocumented)
+    readonly active: number;
+    // (undocumented)
+    readonly capacity?: PretableRemoteCapacity;
+    // (undocumented)
+    readonly evidenceNodes: number;
+    // (undocumented)
+    readonly expansions: number;
+    // (undocumented)
+    readonly ingressBytes: number;
+    // (undocumented)
+    readonly listeners: number;
+    // (undocumented)
+    readonly metadataBytes: number;
+    // (undocumented)
+    readonly payloadBytes: number;
+    // (undocumented)
+    readonly payloadEntries: number;
+    // (undocumented)
+    readonly queued: number;
+    // (undocumented)
+    readonly scopes: number;
+    // (undocumented)
+    readonly stores: number;
+    // (undocumented)
+    readonly subscribers: number;
+    // (undocumented)
+    readonly topology: number;
+}
+
+// @public
+export type PretableRemoteError = {
+    readonly code: "unsupported-query" | "invalid-query" | "invalid-response" | "consistency" | "expired" | "cancelled" | "timeout";
+} | {
+    readonly code: "transient";
+    readonly retryAfterMs?: number;
+} | {
+    readonly code: "unauthorized";
+    readonly scope: "range" | "session";
+};
+
+// @public (undocumented)
+export interface PretableRemoteGroup {
+    // (undocumented)
+    readonly aggregates: Readonly<Record<string, PretableRemoteAggregateValue>>;
+    // (undocumented)
+    readonly childCount: number;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly kind: "group";
+    // (undocumented)
+    readonly label: string;
+    // (undocumented)
+    readonly leafCount?: number;
+    // (undocumented)
+    readonly route: PretableRemoteRoute;
+}
+
+// @public
+export type PretableRemoteGroupSort = {
+    readonly level: number;
+    readonly direction: "asc" | "desc";
+    readonly nulls: "first" | "last";
+    readonly comparison: string;
+} & ({
+    readonly by: "key";
+} | {
+    readonly by: "aggregate";
+    readonly aggregateId: string;
+});
+
+// @public
+export type PretableRemoteKey = string | number | boolean | null;
+
+// @public (undocumented)
+export interface PretableRemoteLeaf<TRow extends object> {
+    // (undocumented)
+    readonly id: PretableRowId;
+    // (undocumented)
+    readonly kind: "leaf";
+    // (undocumented)
+    readonly row: TRow;
+}
+
+// @public
+export interface PretableRemoteLoadedEntry<TRow extends object> {
+    // (undocumented)
+    readonly index: number;
+    // (undocumented)
+    readonly node: PretableRemoteNode<TRow>;
+}
+
+// @public
+export interface PretableRemoteModel<TRow extends object, TColumns> extends PretableRemoteReadHandle<TRow> {
+    // (undocumented)
+    checkExpiry(): void;
+    // (undocumented)
+    demandViewport(viewport: PretableRemoteViewport): Promise<void>;
+    // (undocumented)
+    dispose(): void;
+    // (undocumented)
+    getDiagnostics(): PretableRemoteDiagnostics;
+    // (undocumented)
+    getSnapshot(): PretableRemoteModelSnapshot<TRow>;
+    // (undocumented)
+    readSlot(index: number): PretableRemoteSlot<TRow> | undefined;
+    // (undocumented)
+    refresh(): Promise<void>;
+    // (undocumented)
+    requestSummary(scope: "filtered" | "all"): Promise<void>;
+    // (undocumented)
+    retry(): Promise<void>;
+    // (undocumented)
+    setExpanded(id: string, expanded: boolean): boolean;
+    // (undocumented)
+    setQuery(query: PretableRemoteQuery<TColumns>): Promise<void>;
+}
+
+// @public
+export interface PretableRemoteModelLimits {
+    // (undocumented)
+    cellRanges: number;
+    // (undocumented)
+    depth: number;
+    // (undocumented)
+    expansions: number;
+    // (undocumented)
+    ingressBytes: number;
+    // (undocumented)
+    measurements: number;
+    // (undocumented)
+    metadataBytes: number;
+    // (undocumented)
+    payloadBytes: number;
+    // (undocumented)
+    payloadEntries: number;
+    // (undocumented)
+    responseBytes: number;
+    // (undocumented)
+    selectedIds: number;
+    // (undocumented)
+    stores: number;
+    // (undocumented)
+    topology: number;
+}
+
+// @public (undocumented)
+export interface PretableRemoteModelOptions {
+    // (undocumented)
+    readonly blockSize?: number;
+    readonly estimateResponseBytes?: (value: unknown) => number;
+    // (undocumented)
+    readonly limits?: Partial<PretableRemoteModelLimits>;
+    // (undocumented)
+    readonly now?: () => number;
+}
+
+// @public
+export interface PretableRemoteModelSnapshot<TRow extends object> {
+    // (undocumented)
+    readonly capacity?: PretableRemoteCapacity;
+    // (undocumented)
+    readonly displayCount: number;
+    // (undocumented)
+    readonly error?: PretableRemoteError;
+    // (undocumented)
+    readonly generation: number;
+    // (undocumented)
+    getSummary(scope: "filtered" | "all"): PretableRemoteSummaryAnswer;
+    // (undocumented)
+    loadedEntries(): Iterable<PretableRemoteLoadedEntry<TRow>>;
+    // (undocumented)
+    readSlot(index: number): PretableRemoteSlot<TRow> | undefined;
+    // (undocumented)
+    readonly residentCount: number;
+    // (undocumented)
+    readonly residentGroupCount: number;
+    // (undocumented)
+    readonly residentLeafCount: number;
+    // (undocumented)
+    readonly rootCount: number;
+    // (undocumented)
+    readonly status: PretableRemoteStatus;
+}
+
+// @public
+export type PretableRemoteNode<TRow extends object> = PretableRemoteGroup | PretableRemoteLeaf<TRow>;
+
+// @public (undocumented)
+export type PretableRemotePreparedQuery = {
+    readonly ok: true;
+    readonly queryKey: string;
+} | {
+    readonly ok: false;
+    readonly error: PretableRemoteError;
+};
+
+// @public
+export interface PretableRemoteProvider<TRow extends object, TColumns> {
+    // (undocumented)
+    readonly capabilities: PretableRemoteCapabilities;
+    // (undocumented)
+    open(query: PretableRemoteQuery<TColumns>, queryKey: string, signal: PretableRemoteSignal): Promise<PretableRemoteResult<PretableRemoteSession>>;
+    // (undocumented)
+    read(request: PretableRemoteRangeRequest, signal: PretableRemoteSignal): Promise<PretableRemoteResult<PretableRemoteRange<TRow>>>;
+    // (undocumented)
+    release(session: PretableRemoteSession): Promise<void>;
+    // (undocumented)
+    summary(session: PretableRemoteSession, scope: "filtered" | "all", signal: PretableRemoteSignal): Promise<PretableRemoteResult<PretableRemoteSummary>>;
+}
+
+// @public
+export interface PretableRemoteQuery<TColumns> extends Omit<PretableQueryFor<TColumns>, "sort" | "rowGroups"> {
+    // (undocumented)
+    readonly aggregates: readonly PretableRemoteAggregate<TColumns>[];
+    readonly authScope: string;
+    // (undocumented)
+    readonly comparison: string;
+    // (undocumented)
+    readonly groupSort: readonly PretableRemoteGroupSort[];
+    // (undocumented)
+    readonly locale: string;
+    // (undocumented)
+    readonly projection: readonly ColumnIdOf<TColumns>[];
+    // (undocumented)
+    readonly registryVersion: string;
+    // (undocumented)
+    readonly rowGroups: readonly Pick<PretableRowGroupFor<TColumns>, "columnId">[];
+    // (undocumented)
+    readonly schemaVersion: string;
+    // (undocumented)
+    readonly search?: string;
+    // (undocumented)
+    readonly sort: readonly PretableRemoteSort<TColumns>[];
+    // (undocumented)
+    readonly source: string;
+}
+
+// @public
+export interface PretableRemoteRange<TRow extends object> extends PretableRemoteRangeRequest {
+    // (undocumented)
+    readonly entries: readonly PretableRemoteNode<TRow>[];
+    // (undocumented)
+    readonly siblingCount: number;
+}
+
+// @public (undocumented)
+export interface PretableRemoteRangeRequest extends PretableRemoteSession {
+    // (undocumented)
+    readonly end: number;
+    // (undocumented)
+    readonly route: PretableRemoteRoute;
+    // (undocumented)
+    readonly start: number;
+}
+
+// @public
+export interface PretableRemoteReadHandle<TRow extends object> {
+    getSlot(index: number): PretableRemoteSlot<TRow> | undefined;
+    // (undocumented)
+    getStatus(): PretableRemoteStatus;
+    // (undocumented)
+    subscribe(listener: () => void): () => void;
+}
+
+// @public (undocumented)
+export type PretableRemoteResult<T> = {
+    readonly ok: true;
+    readonly value: T;
+} | {
+    readonly ok: false;
+    readonly error: PretableRemoteError;
+};
+
+// @public
+export type PretableRemoteRoute = readonly PretableRemoteRouteSegment[];
+
+// @public (undocumented)
+export interface PretableRemoteRouteSegment {
+    // (undocumented)
+    readonly columnId: string;
+    // (undocumented)
+    readonly key: PretableRemoteKey;
+}
+
+// @public
+export interface PretableRemoteSession {
+    // (undocumented)
+    readonly expiresAt?: number;
+    // (undocumented)
+    readonly queryKey: string;
+    // (undocumented)
+    readonly resultToken: string;
+    // (undocumented)
+    readonly rootCount: number;
+    readonly sessionId: string;
+}
+
+// @public
+export interface PretableRemoteSignal {
+    // (undocumented)
+    readonly aborted: boolean;
+    // (undocumented)
+    addEventListener(type: "abort", listener: () => void, options?: {
+        readonly once?: boolean;
+    }): void;
+    // (undocumented)
+    removeEventListener(type: "abort", listener: () => void): void;
+}
+
+// @public
+export type PretableRemoteSlot<TRow extends object> = {
+    readonly kind: "loaded";
+    readonly node: PretableRemoteNode<TRow>;
+} | {
+    readonly kind: "unloaded";
+    readonly route: PretableRemoteRoute;
+    readonly ordinal: number;
+} | {
+    readonly kind: "loading";
+    readonly route: PretableRemoteRoute;
+    readonly ordinal: number;
+} | {
+    readonly kind: "error";
+    readonly route: PretableRemoteRoute;
+    readonly ordinal: number;
+    readonly error: PretableRemoteError;
+};
+
+// @public (undocumented)
+export type PretableRemoteSort<TColumns> = PretableSortFor<TColumns> & {
+    readonly nulls: "first" | "last";
+    readonly comparison: string;
+};
+
+// @public (undocumented)
+export type PretableRemoteStatus = {
+    readonly state: "idle" | "loading" | "disposed";
+} | {
+    readonly state: "ready" | "stale";
+    readonly session: PretableRemoteSession;
+} | {
+    readonly state: "error";
+    readonly error: PretableRemoteError;
+};
+
+// @public
+export interface PretableRemoteSummary {
+    // (undocumented)
+    readonly aggregateIds: readonly string[];
+    // (undocumented)
+    readonly authority: "server";
+    // (undocumented)
+    readonly completeness: "complete" | "partial";
+    // (undocumented)
+    readonly queryKey: string;
+    // (undocumented)
+    readonly registryVersion: string;
+    // (undocumented)
+    readonly resultToken: string;
+    // (undocumented)
+    readonly scope: "filtered" | "all";
+    // (undocumented)
+    readonly sessionId: string;
+    // (undocumented)
+    readonly values: Readonly<Record<string, PretableRemoteAggregateValue>>;
+}
+
+// @public (undocumented)
+export type PretableRemoteSummaryAnswer = {
+    readonly state: "unavailable" | "loading";
+} | {
+    readonly state: "error";
+    readonly error: PretableRemoteError;
+} | {
+    readonly state: "ready";
+    readonly summary: PretableRemoteSummary;
+};
+
+// @public
+export interface PretableRemoteViewport {
+    // (undocumented)
+    readonly end: number;
+    // (undocumented)
+    readonly start: number;
+}
+
+// @public
 export interface PretableResultMeta {
     datasetKey?: string;
     // (undocumented)
@@ -1362,6 +1816,15 @@ export type PretableVisibleRowRef<TRowId extends PretableRowId> = {
 
 // @public
 export type Prettify<T> = { [K in keyof T]: T[K]; } & {};
+
+// @public
+export function remoteAggregateDefinitionKey(registryVersion: string, columnId: string, aggregateId: string): string;
+
+// @public
+export function remoteGroupId(route: PretableRemoteRoute): string;
+
+// @public
+export function remoteLeafId(id: string | number): string;
 
 // @public (undocumented)
 export type RowIdOf<TModel> = TModel extends {
