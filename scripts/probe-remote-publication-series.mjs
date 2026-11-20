@@ -1,3 +1,4 @@
+import { publicationGate } from "./publication-probe-accounting.mjs";
 // Independent full-residency repetitions, serially on the same host.
 // Run: node scripts/probe-remote-publication-series.mjs > result.json
 import { spawnSync } from "node:child_process";
@@ -37,14 +38,21 @@ for (const blockSize of [1000, 100]) {
     runs.flatMap((run) => run.measurementSamples.expansionNearCapacityMs),
   );
   const toggle = stats(runs.flatMap((run) => run.measurementSamples.toggleMs));
-  const row_model_commit_p95_ms = Math.max(
-    commit.p95,
+  const admissionSamples = runs.flatMap(
+    (run) => run.measurementSamples.admissionCommitMs,
+  );
+  const observedGate = publicationGate(
+    admissionSamples,
+    runs.flatMap((run) => run.measurementSamples.preparationMs),
+  );
+  observedGate.row_model_commit_p95_ms = Math.max(
+    observedGate.row_model_commit_p95_ms,
     expansion.p95,
     toggle.p95,
   );
-  const rebuild_slice_max_ms = Math.max(
-    ...runs.map((run) => run.scheduledPreparationTurnMs.max),
-  );
+  observedGate.pass =
+    observedGate.row_model_commit_p95_ms <= 8 &&
+    observedGate.rebuild_slice_max_ms <= 8;
   groups.push({
     blockSize,
     independentRuns: count,
@@ -54,12 +62,7 @@ for (const blockSize of [1000, 100]) {
     commitTurn: commit,
     expansionNearCapacity: expansion,
     toggle,
-    observedGate: {
-      row_model_commit_p95_ms,
-      rebuild_slice_max_ms,
-      limit_ms: 8,
-      pass: row_model_commit_p95_ms <= 8 && rebuild_slice_max_ms <= 8,
-    },
+    observedGate,
     runs,
   });
 }

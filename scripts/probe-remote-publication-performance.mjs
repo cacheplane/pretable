@@ -1,6 +1,11 @@
+import {
+  publicationTurn,
+  recordPublicationCallback,
+  preparationSamples,
+} from "./publication-probe-accounting.mjs";
 // Actual public-model default-budget diagnostic. Run: node --import tsx scripts/probe-remote-publication-performance.mjs
 import { performance } from "node:perf_hooks";
-import { createHook } from "node:async_hooks";
+import { createHook, executionAsyncId } from "node:async_hooks";
 import { loadavg, cpus } from "node:os";
 import { createRemoteModel } from "../packages/core/src/remote/create-remote-model.ts";
 import { ModelRetention } from "../packages/core/src/remote/model-retention.ts";
@@ -26,7 +31,8 @@ const processingSlices = [];
 const starts = new Map();
 const resourceTypes = new Map();
 const turns = [];
-let turn = { kind: "initial", processingMs: 0, commits: 0 };
+let turn = publicationTurn("initial");
+let activeCommit;
 const admissionCommits = [];
 const originalPrepare = ModelRetention.prototype.prepareSteps;
 ModelRetention.prototype.prepareSteps = function* (input) {
@@ -41,10 +47,11 @@ ModelRetention.prototype.prepareSteps = function* (input) {
     const commit = plan.commit;
     plan.commit = () => {
       const start = performance.now();
+      const provider = providerPreparationMs;
       const accepted = commit();
       if (accepted) {
-        turn.commits++;
-        queueMicrotask(() => admissionCommits.push(performance.now() - start));
+        if (activeCommit) throw new Error("Overlapping probe commit regions");
+        activeCommit = { id: executionAsyncId(), start, provider };
       }
       return accepted;
     };
@@ -62,7 +69,7 @@ const callbackHook = createHook({
     const type = resourceTypes.get(id);
     if (type === "Timeout" || type === "Immediate") {
       turns.push(turn);
-      turn = { kind: type, processingMs: 0, commits: 0 };
+      turn = publicationTurn(type);
     }
     starts.set(id, {
       time: performance.now(),
@@ -72,12 +79,20 @@ const callbackHook = createHook({
   after(id) {
     const start = starts.get(id);
     if (start !== undefined) {
+      const end = performance.now();
       const duration =
-        performance.now() -
-        start.time -
-        (providerPreparationMs - start.provider);
+        end - start.time - (providerPreparationMs - start.provider);
+      let commitMs;
+      if (activeCommit?.id === id) {
+        commitMs =
+          end -
+          activeCommit.start -
+          (providerPreparationMs - activeCommit.provider);
+        admissionCommits.push(commitMs);
+        activeCommit = undefined;
+      }
       processingSlices.push(duration);
-      turn.processingMs += duration;
+      recordPublicationCallback(turn, duration, commitMs);
       starts.delete(id);
     }
   },
@@ -128,6 +143,8 @@ try {
   resourceTypes.clear();
   turns.push(turn);
   ModelRetention.prototype.prepareSteps = originalPrepare;
+  if (activeCommit || admissionCommits.length !== Math.ceil(5000 / blockSize))
+    throw new Error("Publication probe lost a commit measurement");
   const initial = model.getDiagnostics();
   if (initial.payloadEntries !== 5000 || initial.topology !== 5001)
     throw new Error("Publication probe did not admit the required residency");
@@ -177,11 +194,7 @@ try {
         demandModelProcessingMs,
         fillProcessingCallbacks: summarize(processingSlices),
         admissionCommitMs: summarize(admissionCommits),
-        scheduledPreparationTurnMs: summarize(
-          turns
-            .filter((turn) => turn.kind === "Timeout" && turn.commits === 0)
-            .map((turn) => turn.processingMs),
-        ),
+        scheduledPreparationTurnMs: summarize(preparationSamples(turns)),
         commitTurnMs: summarize(
           turns
             .filter((turn) => turn.commits > 0)
@@ -192,13 +205,14 @@ try {
           .slice(0, 5),
         allProcessingTurnMs: summarize(turns.map((turn) => turn.processingMs)),
         instrumentation:
-          "async_hooks callback CPU sums grouped until next Timeout/Immediate; fresh commit tasks separated from preparation tasks; commit from payload plan.commit through queued microtask after synchronous publication; all instrumentation overhead included",
+          "async_hooks callback CPU sums grouped until next Timeout/Immediate; subtract only commit region from plan.commit start to owning callback end (synchronous evidence/publication); preparation before/after commits remains in maximum; full turn diagnostics and instrumentation overhead retained",
         initial,
         final: model.getDiagnostics(),
         fillMs,
         acceptedExpansions,
         refusal,
         measurementSamples: {
+          preparationMs: preparationSamples(turns),
           admissionCommitMs: [...admissionCommits],
           commitTurnMs: turns
             .filter((turn) => turn.commits > 0)

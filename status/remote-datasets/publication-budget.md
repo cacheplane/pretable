@@ -238,7 +238,12 @@ raw key text. New topology record/key ownership is charged by the incoming credi
 before allocating comparison or retention indexes. These sequential traversal
 allowances are not reused for a second response or retained candidate history.
 
-## Repeated final diagnostic evidence (not certification)
+## Historical repeated diagnostic evidence (not certification)
+
+**Classifier limitation:** this historical series excluded whole commit-bearing turns
+from preparation maxima. It remains useful failure evidence, but its observed passes
+cannot certify preparation work chained after commits. The corrected classifier and
+separate smoke evidence below supersede that classification.
 
 `publication-diagnostic-series.json` contains three independent full-residency runs
 for each supported fixture, including raw commit/expansion/toggle samples, per-run
@@ -303,3 +308,40 @@ correctness issue. **The performance gate remains open, and Task10 must not begi
 No new integrated browser cadence claim is made by this headless probe. Existing
 layout/renderer regressions passed; physical touch/trackpad and integrated browser
 cadence remain the previously documented release gates when that integration exists.
+
+## Corrected preparation-segment classifier
+
+An evidence review found that `queue.finally → pump` can start preparation for the
+next response in the same real task as a prior commit. Excluding that whole task
+could hide a long preparation primitive behind the commit-p95 rule. The probe now
+marks commit start with its executing async callback ID and closes the region at
+that callback's end, after synchronous evidence/publication. It subtracts only that
+measured region (and separately measured fixture CPU) from callback processing.
+All other callback work before and after commits accumulates as preparation until
+the next real task. No marker-microtask wall interval or whole commit-bearing turn
+is subtracted. Full task durations and precise commit samples are both retained.
+
+The corrected series gate uses precise commit-region p95, synchronous expansion and
+toggle p95, and maximum preparation accumulation across **all** scheduled turns,
+including turns containing commits. Full commit-bearing task p95/max remains a
+diagnostic, not a substitute max-every-callback rule. The probe asserts that all
+expected response commits were measured. Four deterministic classifier tests cover
+small commit followed by9ms preparation (failure), a12ms isolated commit among100
+samples (p95-governed), multiple commits with preparation on both sides, and partial
+callback subtraction. Root test enumeration includes this regression suite.
+
+`publication-segment-smoke.json` preserves one independent full-residency run per
+fixture after this instrumentation-only correction. It is a classifier smoke check,
+not a replacement for the required repeated quiet-host run:
+
+| Fixture | Commit/command p95 gate | Preparation maximum | Observed result                   |
+| ------- | ----------------------: | ------------------: | --------------------------------- |
+| 1000    |                 8.154ms |             3.560ms | **FAIL**, synchronous command p95 |
+| 100     |                 6.839ms |             5.804ms | pass, uncertified                 |
+
+The maximum preparation segments in both smoke runs occurred in turns that also
+contained a commit, demonstrating why the former exclusion was invalid. There were
+5/50 precise admission commit samples, with p952.140/2.105ms; full task maxima remain
+5.001/7.399ms. Host load was about5.8–6.4 on10 logical CPUs. Earlier15.901ms failures
+are preserved. Functional product code is unchanged by this correction. **Task9b
+remains open pending a valid repeated quiet-host pass for both fixtures.**
