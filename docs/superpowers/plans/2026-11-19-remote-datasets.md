@@ -211,6 +211,14 @@ limits (expansion p95 34.773 ms); this is not a passed Tasks 5–9 checkpoint.
 Measurement/projection/viewport budget wiring remains an explicit Task 10 gate.
 
 Mandatory Task 9b is in progress; Task 10 must not start until it passes.
+Its functional scope is implemented and separately specification/quality reviewed
+through `8bac387b`: immutable geometry reuse, cooperative admission, compact
+evidence, cancellation/deadline cleanup and incoming metadata reservation.
+Core 356, layout 163 and renderer 201 tests pass, along with public types and API
+checks. Repeated loaded-host diagnostics preserve 5,000 payloads/5,001 topology
+nodes: supported block size 1,000 passes observed limits, but default size 100
+still fails the preparation-slice maximum (15.901 ms). Quiet-host reproduction
+and any resulting fixes remain required. See `status/remote-datasets/publication-budget.md`.
 
 ## Tasks
 
@@ -310,9 +318,9 @@ Mandatory Task 9b is in progress; Task 10 must not start until it passes.
 
 **Files:** Refine `packages/core/src/remote/{cache,model-retention,model-view,create-remote-model,sparse-index,validate-response,session}.ts` only as needed; add focused work-budget/lifecycle tests; extend `scripts/probe-remote-publication-performance.mjs` and status evidence.
 
-- [ ] **Step 1:** Reproduce the integrated default-budget failure with actual public-model counters, not an impossible combination of independent maximum limits. Separate provider latency, synchronous processing turns and total fill latency. Preserve the original threshold and fixture evidence.
-- [ ] **Step 2:** Add deterministic work-bound and atomic-publication regressions for expansion/collapse, response admission, metadata-only changes, supersession, source/auth replacement and disposal during preparation. Test temporary reservations and failed admission without retained historical candidates. Observe relevant failures before implementation.
-- [ ] **Step 3:** Remove redundant whole-state preparation/publication and use incremental/persistent structures or bounded cooperative preparation where needed. Reuse only immutable compatible state. Preserve immediate collapse semantics, exact accepted projection, stable IDs, shared memory budgets, bootstrap ownership, pending-demand replay and server-summary provenance. Do not introduce a render-time fetch or weaken consistency to meet timing.
+- [x] **Step 1:** Reproduce the integrated default-budget failure with actual public-model counters, not an impossible combination of independent maximum limits. Separate provider latency, synchronous processing turns and total fill latency. Preserve the original threshold and fixture evidence.
+- [x] **Step 2:** Add deterministic work-bound and atomic-publication regressions for expansion/collapse, response admission, metadata-only changes, supersession, source/auth replacement and disposal during preparation. Test temporary reservations and failed admission without retained historical candidates. Observe relevant failures before implementation.
+- [x] **Step 3:** Remove redundant whole-state preparation/publication and use incremental/persistent structures or bounded cooperative preparation where needed. Reuse only immutable compatible state. Preserve immediate collapse semantics, exact accepted projection, stable IDs, shared memory budgets, bootstrap ownership, pending-demand replay and server-summary provenance. Do not introduce a render-time fetch or weaken consistency to meet timing.
 - [ ] **Step 4:** Run all core remote and affected layout/renderer regressions, public type/API checks, and the integrated quiet-host probe at supported default residency. Preserve the existing gate semantics in `scripts/bench-row-model-gate.mjs`: commit p95 at most 8 ms and maximum scheduled rebuild slice at most 8 ms, plus the measured-cadence frame/correctness checks when browser integration is present. Report end-to-end latency separately. Explicitly distinguish custom raised-limit workloads and unavailable quiet-host evidence.
 - [ ] **Step 5:** Complete separate specification and quality reviews; commit as `perf: bound integrated remote publication work`. Do not proceed to React integration while this gate is known to fail.
 
