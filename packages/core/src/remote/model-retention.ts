@@ -170,11 +170,10 @@ export class ModelRetention<TRow extends object> {
       this.capacity = "stale-plan";
       return;
     }
-    // With no payload/protection changes the accepted topology is compatible.
+    // Metadata and payload protection changes preserve accepted topology.
     // A collapse that can release an orphan ancestor takes the full pruning path.
     const metadataOnly =
       !input.root &&
-      !input.protectedRanges &&
       (input.additions ?? []).every(
         (r) => r.kind === "external" || r.kind === "expansion",
       ) &&
@@ -187,16 +186,29 @@ export class ModelRetention<TRow extends object> {
           (id) => input.expanded!.has(id) || this.residentGroups.has(id),
         ));
     if (metadataOnly) {
+      const additions = [...(input.additions ?? [])];
+      if (input.protectedRanges) {
+        for (const record of this.records.values()) {
+          yield;
+          if (
+            record.kind === "payload" &&
+            record.scope === this.visible &&
+            Boolean(record.protected) !== input.protectedRanges.has(record.key)
+          )
+            additions.push({
+              ...record,
+              protected: input.protectedRanges.has(record.key),
+            });
+        }
+      }
       const prepared = this.cache.prepare({
-        records: input.additions ?? [],
+        records: additions,
         drops: input.drops,
         expectedEpoch,
       });
       if (prepared.ok) {
         const changed = new Set(
-          [...(input.additions ?? []), ...(input.drops ?? [])].map((r) =>
-            this.id(r),
-          ),
+          [...additions, ...(input.drops ?? [])].map((r) => this.id(r)),
         );
         if (prepared.plan.evictions.every((r) => changed.has(this.id(r)))) {
           const groups = this.groups,
@@ -209,7 +221,7 @@ export class ModelRetention<TRow extends object> {
             visible: this.visible,
             releaseScopes: [],
             evictions: [],
-            additions: input.additions,
+            additions,
             drops: input.drops,
             geometry:
               this.geometry?.expanded === expanded ? this.geometry : undefined,

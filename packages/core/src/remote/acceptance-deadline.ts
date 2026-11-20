@@ -31,8 +31,26 @@ export function createAcceptanceDeadline(
       }
     }
   };
+  const terminate = () => {
+    if (disposed) return;
+    dispose();
+    try {
+      expire();
+    } catch {
+      /* No callback may retain deadline resources. */
+    }
+  };
+  const owned = () => {
+    if (disposed || signal.aborted) return false;
+    try {
+      return owns();
+    } catch {
+      terminate();
+      return false;
+    }
+  };
   const current = () => {
-    if (disposed || signal.aborted || !owns()) return false;
+    if (!owned()) return false;
     if (!deadline) return true;
     let now: number;
     try {
@@ -40,10 +58,9 @@ export function createAcceptanceDeadline(
     } catch {
       now = Infinity;
     }
-    if (disposed || signal.aborted || !owns()) return false;
+    if (!owned()) return false;
     if (!Number.isFinite(now) || now >= deadline.at) {
-      dispose();
-      expire();
+      terminate();
       return false;
     }
     return true;
@@ -61,8 +78,7 @@ export function createAcceptanceDeadline(
     try {
       timer = deadline.clock.setTimeout(arm, Math.max(0, remaining));
     } catch {
-      dispose();
-      expire();
+      terminate();
       return;
     }
     if (!current()) dispose();

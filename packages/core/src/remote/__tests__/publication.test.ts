@@ -580,3 +580,74 @@ it("rebases an owned response after metadata changes and an identical query duri
     vi.useRealTimers();
   }
 });
+
+it("reuses accepted geometry when viewport changes only payload protection", async () => {
+  const { model } = await ready(2);
+  await model.demandViewport({ start: 0, end: 2 });
+  const before = model.getSnapshot();
+  const builds = vi.spyOn(SparseIndex.prototype, "resolveBatch");
+  await model.demandViewport({ start: 1, end: 2 });
+  expect(builds).not.toHaveBeenCalled();
+  expect(model.getSnapshot().residentCount).toBe(2);
+  expect(before.readSlot(0)).toEqual(model.getSnapshot().readSlot(0));
+  model.dispose();
+});
+
+it("discards completed retention when session ownership guard throws before the next continuation", async () => {
+  const { ModelRetention } = await import("../model-retention");
+  const { query } = await import("./fixtures/responses");
+  let expired = false;
+  let discard: ReturnType<typeof vi.fn> | undefined;
+  const original = ModelRetention.prototype.prepareSteps;
+  vi.spyOn(ModelRetention.prototype, "prepareSteps").mockImplementation(
+    function* (this: InstanceType<typeof ModelRetention>, input) {
+      const plan = yield* original.call(this, input);
+      if (
+        plan &&
+        input.additions?.some((record) => record.kind === "payload")
+      ) {
+        discard = vi.spyOn(plan, "discard");
+        expired = true;
+      }
+      return plan;
+    },
+  );
+  const model = createRemoteModel<Row, Columns>(
+    {
+      capabilities,
+      async open(_q, queryKey) {
+        return {
+          ok: true,
+          value: { ...session, queryKey, rootCount: 1, expiresAt: 100 },
+        };
+      },
+      async read(request) {
+        return {
+          ok: true,
+          value: {
+            ...request,
+            siblingCount: 1,
+            entries: [{ kind: "leaf", id: 0, row: { value: 0 } }],
+          },
+        };
+      },
+      async summary() {
+        return { ok: false, error: { code: "unsupported-query" } };
+      },
+      async release() {},
+    },
+    {
+      now: () => {
+        if (expired) throw new Error("clock");
+        return 0;
+      },
+    },
+  );
+  await model.setQuery(query);
+  expect(discard).toHaveBeenCalled();
+  expect(model.getDiagnostics()).toMatchObject({
+    payloadEntries: 0,
+    ingressBytes: 0,
+  });
+  model.dispose();
+});

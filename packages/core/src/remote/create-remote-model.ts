@@ -303,8 +303,17 @@ export function createRemoteModel<TRow extends object, TColumns>(
           input.current,
           input.budget,
         );
-        if (!staged.ok || !input.current()) return;
+        if (!staged.ok) return;
         const plan = staged.value;
+        try {
+          if (!input.current()) {
+            plan?.discard();
+            return;
+          }
+        } catch (error) {
+          plan?.discard();
+          throw error;
+        }
         if (!plan) {
           if (retention.cache.snapshot().epoch !== attemptEpoch) continue;
           refuseSummary();
