@@ -25,6 +25,7 @@ test("a slow isolated commit is governed by commit p95, not a maximum callback r
   const gate = publicationGate(
     turns.map((turn) => turn.commitMs),
     preparationSamples(turns),
+    turns.map((turn) => turn.processingMs),
   );
   assert.equal(gate.row_model_commit_p95_ms, 1);
   assert.equal(gate.rebuild_slice_max_ms, 0);
@@ -45,4 +46,16 @@ test("only the measured commit portion of its callback is excluded", () => {
   recordPublicationCallback(turn, 7, 2);
   assert.deepEqual(preparationSamples([turn]), [5]);
   assert.throws(() => recordPublicationCallback(turn, 1, 2), RangeError);
+});
+
+test("complete commit-turn p95 remains a conservative gate alongside phase bounds", () => {
+  const turn = publicationTurn("Timeout");
+  recordPublicationCallback(turn, 6, 6);
+  recordPublicationCallback(turn, 6);
+  const gate = publicationGate([6], preparationSamples([turn]), [
+    turn.processingMs,
+  ]);
+  assert.equal(gate.row_model_commit_p95_ms, 12);
+  assert.equal(gate.rebuild_slice_max_ms, 6);
+  assert.equal(gate.pass, false);
 });

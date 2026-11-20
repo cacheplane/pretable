@@ -21,9 +21,13 @@ export function preparationSamples(turns) {
     .filter((turn) => turn.kind === "Timeout")
     .map((turn) => turn.preparationMs);
 }
-export function publicationGate(commitSamples, preparation) {
+export function publicationGate(commitSamples, preparation, commitTurns = []) {
   const sorted = [...commitSamples].sort((a, b) => a - b);
-  const row_model_commit_p95_ms = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
+  const sortedTurns = [...commitTurns].sort((a, b) => a - b);
+  const row_model_commit_p95_ms = Math.max(
+    sorted[Math.floor(sorted.length * 0.95)] ?? 0,
+    sortedTurns[Math.floor(sortedTurns.length * 0.95)] ?? 0,
+  );
   const rebuild_slice_max_ms = Math.max(0, ...preparation);
   return {
     row_model_commit_p95_ms,

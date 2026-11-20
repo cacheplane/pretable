@@ -44,6 +44,7 @@ for (const blockSize of [1000, 100]) {
   const observedGate = publicationGate(
     admissionSamples,
     runs.flatMap((run) => run.measurementSamples.preparationMs),
+    runs.flatMap((run) => run.measurementSamples.commitTurnMs),
   );
   observedGate.row_model_commit_p95_ms = Math.max(
     observedGate.row_model_commit_p95_ms,

@@ -321,14 +321,18 @@ All other callback work before and after commits accumulates as preparation unti
 the next real task. No marker-microtask wall interval or whole commit-bearing turn
 is subtracted. Full task durations and precise commit samples are both retained.
 
-The corrected series gate uses precise commit-region p95, synchronous expansion and
+The corrected series gate uses the maximum of precise commit-region p95, complete
+commit-bearing task p95, synchronous expansion and
 toggle p95, and maximum preparation accumulation across **all** scheduled turns,
-including turns containing commits. Full commit-bearing task p95/max remains a
-diagnostic, not a substitute max-every-callback rule. The probe asserts that all
-expected response commits were measured. Four deterministic classifier tests cover
+including turns containing commits. The complete commit-task p95 preserves the
+prior conservative gate:6ms commit plus6ms preparation in one task still fails,
+even though each phase is below8ms. Commit maxima remain diagnostic; this does
+not substitute a max-every-callback rule. The probe asserts that all
+expected response commits were measured. Five deterministic classifier tests cover
 small commit followed by9ms preparation (failure), a12ms isolated commit among100
 samples (p95-governed), multiple commits with preparation on both sides, and partial
-callback subtraction. Root test enumeration includes this regression suite.
+callback subtraction, and the combined6+6ms task. Root test enumeration includes
+this regression suite.
 
 `publication-segment-smoke.json` preserves one independent full-residency run per
 fixture after this instrumentation-only correction. It is a classifier smoke check,
