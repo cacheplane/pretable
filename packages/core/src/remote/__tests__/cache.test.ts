@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RemoteCache, type CacheRecord, type CachePlan } from "../cache";
 
 const record = (
@@ -398,4 +398,27 @@ it("charges controller metadata independently of two body scopes and refuses glo
   ).toBe(false);
   cache.drop(-1, "request");
   expect(cache.snapshot().metadataBytes).toBe(0);
+});
+
+it("does not collect or sort eviction candidates when the proposed state fits", () => {
+  const cache = new RemoteCache();
+  cache.openScope(1);
+  const sort = vi.spyOn(Array.prototype, "sort");
+  try {
+    const prepared = cache.prepare({
+      records: [
+        {
+          scope: 1,
+          key: "metadata",
+          kind: "external",
+          value: undefined,
+          metadataBytes: 128,
+        },
+      ],
+    });
+    expect(prepared.ok).toBe(true);
+    expect(sort).not.toHaveBeenCalled();
+  } finally {
+    sort.mockRestore();
+  }
 });

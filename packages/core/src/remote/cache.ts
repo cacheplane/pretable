@@ -380,16 +380,19 @@ export class RemoteCache {
         usage.measurements > this.limits.measurements;
       const priority = (r: Retained) =>
         r.record.tier === "prefetch" ? 0 : r.record.tier === "overscan" ? 1 : 2;
-      const candidates = [...records]
-        .filter(
-          ([key, r]) =>
-            !added.has(key) &&
-            !r.record.protected &&
-            !intentKinds.has(r.record.kind),
-        )
-        .sort(
-          (a, b) => priority(a[1]) - priority(b[1]) || a[1].stamp - b[1].stamp,
-        );
+      const candidates = excess()
+        ? [...records]
+            .filter(
+              ([key, r]) =>
+                !added.has(key) &&
+                !r.record.protected &&
+                !intentKinds.has(r.record.kind),
+            )
+            .sort(
+              (a, b) =>
+                priority(a[1]) - priority(b[1]) || a[1].stamp - b[1].stamp,
+            )
+        : [];
       for (const [key, retained] of candidates) {
         if (!excess()) break;
         const kind = retained.record.kind;

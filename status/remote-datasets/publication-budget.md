@@ -1,6 +1,6 @@
 # Task 9 b: integrated publication processing budget
 
-Status: intermediate synchronous optimization; **the complete 8 ms gate remains failing**.
+Status: functional optimization and staged accounting implemented; **final quiet-host 8 ms certification remains pending**. Earlier failures and intermediate evidence below are preserved.
 
 The original diagnostic and `layout-publication-performance.json` are preserved.
 `publication-before.json` reproduces 5000 resident group payloads, 5001 topology
@@ -55,7 +55,7 @@ reservation yet: current preparations remain synchronous and candidate maps shar
 accepted immutable values. Cooperative admission must explicitly reserve its new
 cross-turn staging lifetime before this task can claim boundedness.
 
-## Outstanding failure
+## Historical failure before cooperative preparation
 
 Supported 1000 synchronous demand entry is 38.20 ms, fill callback maximum 52.11 ms.
 Default 100 synchronous demand entry is 36.46 ms, fill callback maximum 41.47 ms.
@@ -211,3 +211,29 @@ The shared response queue budget carries commit/cleanup time into the next respo
 so consecutive sub-budget responses cannot drain indefinitely in one microtask turn.
 Loading-intent regressions await the staged publication and retain their original
 projection assertions.
+
+## Final verification and remaining timing work
+
+The staged implementation passed356 core tests across17 files (339 remote), core
+lint/typecheck, and the prior355-test checkpoint passed build/API checks. Independent
+root verification passed layout163/9 files, renderer201/12, public dependency builds,
+and both consumer type projects. The original checkout's user diff remains unchanged.
+Functional spec review of431c4ffe found no actionable correctness issue; final quality
+review and quiet-host timing are still separate gates.
+
+The last localized cache change skips collecting/filtering/sorting all eviction
+candidates when the proposed usage already fits. A red-to-green work-bound regression
+verifies no sorting on this path; existing pressure/eviction/refusal tests still pass.
+This removes both CPU work and a transient candidate array without changing eviction
+order under pressure.
+
+Pre-credit sizing does retain one range-address/parent identity and one transient
+group descriptor while traversing its cost. It never accumulates incoming descriptors.
+The copy traversal's key/original-value arrays are already released before this cost
+phase, so its bounded descriptor traversal reuses that owned-stage traversal envelope.
+The range is already matched to the charged request route: escaped address/parent
+identity scratch is covered by the existing request's4×operation-key-length and
+6×serialized-context allowances, measured on canonical/escaped strings rather than
+raw key text. New topology record/key ownership is charged by the incoming credit
+before allocating comparison or retention indexes. These sequential traversal
+allowances are not reused for a second response or retained candidate history.
