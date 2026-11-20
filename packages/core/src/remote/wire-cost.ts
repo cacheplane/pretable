@@ -7,7 +7,9 @@ export function wireBytes(value: unknown): number {
   }
 }
 export class ResponseCapacityError extends RangeError {
-  constructor() {
+  constructor(
+    readonly capacity: "invalid-cost" | "metadata-capacity" = "invalid-cost",
+  ) {
     super("response cost");
     this.name = "ResponseCapacityError";
   }

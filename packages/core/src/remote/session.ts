@@ -1,3 +1,4 @@
+import { ResponseCapacityError } from "./wire-cost";
 import {
   createPreparationBudget,
   type PreparationBudget,
@@ -70,6 +71,7 @@ export interface RemoteAdmission<TRow extends object> {
   readonly current: () => boolean;
   readonly budget: PreparationBudget;
   readonly ownedBytes?: number;
+  readonly creditKey?: string;
   readonly generation: number;
   readonly root: boolean;
   readonly session: PretableRemoteSession;
@@ -91,7 +93,12 @@ type RemoteInvoke = <T>(
 ) => Promise<PretableRemoteResult<T>>;
 interface Options<TRow extends object> {
   readonly responseBytes?: number;
-  readonly onCapacity?: () => void;
+  readonly onCapacity?: (reason: "invalid-cost" | "metadata-capacity") => void;
+  readonly reserveAdmission?: (input: {
+    generation: number;
+    value: PretableRemoteRange<TRow> | PretableRemoteSummary;
+    ownedBytes: number;
+  }) => Generator<void, { key: string; release(): void } | undefined>;
   readonly prepareResponse?: (
     signal: PretableRemoteSignal,
     work: (budget: PreparationBudget) => Promise<void>,
@@ -142,6 +149,36 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
     frozen: boolean;
     published: boolean;
     released: boolean;
+  }
+  function incomingReservation(c: Context, owner: AbortController) {
+    let credit: { key: string; release(): void } | undefined;
+    const release = () => {
+      credit?.release();
+      credit = undefined;
+    };
+    owner.signal.addEventListener("abort", release, { once: true });
+    return {
+      get key() {
+        return credit?.key;
+      },
+      *prepare(
+        value: PretableRemoteRange<TRow> | PretableRemoteSummary,
+        ownedBytes: number,
+      ): Generator<void, void> {
+        if (!options.reserveAdmission) return;
+        credit = yield* options.reserveAdmission({
+          generation: c.generation,
+          value,
+          ownedBytes,
+        });
+        if (!credit) throw new ResponseCapacityError("metadata-capacity");
+        if (owner.signal.aborted) release();
+      },
+      release() {
+        owner.signal.removeEventListener("abort", release);
+        release();
+      },
+    };
   }
   let generation = 0,
     disposed = false;
@@ -594,6 +631,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       owner = ownerFor(c, key);
     if (!owns(c, key, owner)) return;
     c.requests.set(key, request);
+    const incoming = incomingReservation(c, owner);
     let acceptance: ReturnType<typeof createAcceptanceDeadline> | undefined;
     const accepting = () =>
       acceptance?.current() ??
@@ -637,14 +675,19 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
                 accepting,
                 budget,
                 options.responseBytes,
+                incoming.prepare,
               )
             : c.validator!.acceptRange(request, response.value, false)
           : response;
         if (!answer || !accepting()) return;
-        if ("capacity" in answer && answer.capacity) {
+        if (
+          "capacity" in answer &&
+          (answer.capacity === "invalid-cost" ||
+            answer.capacity === "metadata-capacity")
+        ) {
           c.owners.delete(key);
           c.requests.delete(key);
-          options.onCapacity?.();
+          options.onCapacity?.(answer.capacity);
           notify(snapshot);
           return;
         }
@@ -665,6 +708,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
               signal: owner.signal,
               current: accepting,
               budget,
+              creditKey: incoming.key,
               ownedBytes:
                 "ownedBytes" in answer
                   ? (answer.ownedBytes as number)
@@ -727,6 +771,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       else await process();
     } finally {
       acceptance?.dispose();
+      incoming.release();
       consumed(owner);
     }
   }
@@ -883,6 +928,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       const key = `summary:${scope}`,
         owner = ownerFor(c, key);
       if (!owns(c, key, owner)) return;
+      const incoming = incomingReservation(c, owner);
       let acceptance: ReturnType<typeof createAcceptanceDeadline> | undefined;
       const accepting = () =>
         acceptance?.current() ??
@@ -920,13 +966,18 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
                   accepting,
                   budget,
                   options.responseBytes,
+                  incoming.prepare,
                 )
               : c.validator!.acceptSummary(scope, response.value, false)
             : response;
           if (!answer || !accepting()) return;
-          if ("capacity" in answer && answer.capacity) {
+          if (
+            "capacity" in answer &&
+            (answer.capacity === "invalid-cost" ||
+              answer.capacity === "metadata-capacity")
+          ) {
             c.owners.delete(key);
-            options.onCapacity?.();
+            options.onCapacity?.(answer.capacity);
             notify(snapshot);
             return;
           }
@@ -946,6 +997,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
                 signal: owner.signal,
                 current: accepting,
                 budget,
+                creditKey: incoming.key,
                 ownedBytes:
                   "ownedBytes" in answer
                     ? (answer.ownedBytes as number)
@@ -989,6 +1041,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         else await process();
       } finally {
         acceptance?.dispose();
+        incoming.release();
         consumed(owner);
       }
     },

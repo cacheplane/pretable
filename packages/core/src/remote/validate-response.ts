@@ -9,7 +9,6 @@ import {
   canonicalRemoteRoute,
   remoteAggregateDefinitionKey,
   remoteGroupId,
-  remoteLeafId,
 } from "./query";
 import type {
   PretableRemoteAggregateValue,
@@ -309,6 +308,9 @@ export function createResponseValidator<TRow extends object, TColumns>(
     retain: boolean,
     maxBytes?: number,
     onCost?: (bytes: number) => void,
+    beforeValidate?: (
+      value: PretableRemoteRange<TRow>,
+    ) => Generator<void, void>,
   ): Generator<void, PretableRemoteRange<TRow>> {
     check(!disposed);
     const r = yield* snapshotWireSteps(input, maxBytes, onCost);
@@ -334,7 +336,9 @@ export function createResponseValidator<TRow extends object, TColumns>(
       r.entries.length ===
         Math.max(0, Math.min(r.end, r.siblingCount) - r.start),
     );
-    const newIds = new Set<string>();
+    if (beforeValidate) yield* beforeValidate(r);
+    const negativeZero = Symbol();
+    const newIds = new Set<string | number | symbol>();
     for (const [i, node] of r.entries.entries()) {
       yield;
       check(node && (node.kind === "group" || node.kind === "leaf"));
@@ -342,7 +346,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
         (node.kind === "group") === r.route.length < query.rowGroups.length,
       );
       const ordinal = r.start + i;
-      let id: string;
+      let id: string | number | symbol;
       if (node.kind === "group") {
         routeValid(node.route);
         check(
@@ -361,7 +365,11 @@ export function createResponseValidator<TRow extends object, TColumns>(
           fail("consistency");
         id = node.id;
       } else {
-        id = remoteLeafId(node.id);
+        check(
+          typeof node.id === "string" ||
+            (typeof node.id === "number" && Number.isFinite(node.id)),
+        );
+        id = Object.is(node.id, -0) ? negativeZero : node.id;
         check(
           node.row && typeof node.row === "object" && !Array.isArray(node.row),
         );
@@ -386,6 +394,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
     retain: boolean,
     maxBytes?: number,
     onCost?: (bytes: number) => void,
+    beforeValidate?: (value: PretableRemoteSummary) => Generator<void, void>,
   ): Generator<void, PretableRemoteSummary> {
     check(!disposed);
     const s = yield* snapshotWireSteps(input, maxBytes, onCost);
@@ -403,6 +412,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
           query.aggregates.map((a) => a.id).sort(),
         )),
     );
+    if (beforeValidate) yield* beforeValidate(s);
     yield* aggregateValues(s.values);
     const prior = summaries.get(scope);
     if (
@@ -447,19 +457,32 @@ export function createResponseValidator<TRow extends object, TColumns>(
       current: () => boolean,
       budget?: PreparationBudget,
       maxBytes?: number,
+      beforeValidate?: (
+        value: PretableRemoteRange<TRow>,
+        bytes: number,
+      ) => Generator<void, void>,
     ): Promise<
       | (PretableRemoteResult<PretableRemoteRange<TRow>> & {
           ownedBytes?: number;
-          capacity?: true;
+          capacity?: "invalid-cost" | "metadata-capacity";
         })
       | undefined
     > {
       try {
         let ownedBytes: number | undefined;
         const prepared = await prepareCooperatively(
-          rangeSteps(request, input, false, maxBytes, (bytes) => {
-            ownedBytes = bytes;
-          }),
+          rangeSteps(
+            request,
+            input,
+            false,
+            maxBytes,
+            (bytes) => {
+              ownedBytes = bytes;
+            },
+            beforeValidate
+              ? (value) => beforeValidate(value, ownedBytes!)
+              : undefined,
+          ),
           signal,
           current,
           budget,
@@ -469,7 +492,11 @@ export function createResponseValidator<TRow extends object, TColumns>(
           : undefined;
       } catch (error) {
         if (error instanceof ResponseCapacityError)
-          return { ok: false, error: { code: "cancelled" }, capacity: true };
+          return {
+            ok: false,
+            error: { code: "cancelled" },
+            capacity: error.capacity,
+          };
         return result(() => {
           throw error;
         });
@@ -489,19 +516,32 @@ export function createResponseValidator<TRow extends object, TColumns>(
       current: () => boolean,
       budget?: PreparationBudget,
       maxBytes?: number,
+      beforeValidate?: (
+        value: PretableRemoteSummary,
+        bytes: number,
+      ) => Generator<void, void>,
     ): Promise<
       | (PretableRemoteResult<PretableRemoteSummary> & {
           ownedBytes?: number;
-          capacity?: true;
+          capacity?: "invalid-cost" | "metadata-capacity";
         })
       | undefined
     > {
       try {
         let ownedBytes: number | undefined;
         const prepared = await prepareCooperatively(
-          summarySteps(scope, input, false, maxBytes, (bytes) => {
-            ownedBytes = bytes;
-          }),
+          summarySteps(
+            scope,
+            input,
+            false,
+            maxBytes,
+            (bytes) => {
+              ownedBytes = bytes;
+            },
+            beforeValidate
+              ? (value) => beforeValidate(value, ownedBytes!)
+              : undefined,
+          ),
           signal,
           current,
           budget,
@@ -511,7 +551,11 @@ export function createResponseValidator<TRow extends object, TColumns>(
           : undefined;
       } catch (error) {
         if (error instanceof ResponseCapacityError)
-          return { ok: false, error: { code: "cancelled" }, capacity: true };
+          return {
+            ok: false,
+            error: { code: "cancelled" },
+            capacity: error.capacity,
+          };
         return result(() => {
           throw error;
         });

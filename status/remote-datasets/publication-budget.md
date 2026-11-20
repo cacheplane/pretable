@@ -150,3 +150,64 @@ an implementation checkpoint, not completion: the disjoint current/candidate
 metadata allowance audit, final ownership assertions, phase/whole-task timings,
 consumer/layout/renderer regressions, and final near-cap evidence remain pending.
 The earlier timing JSON is preserved and is not represented as final certification.
+
+## Disjoint staging ownership and accounting
+
+Accounting uses deterministic retained-size estimates, not engine heap measurements.
+`W(x)` is `wireBytes(x)`, including every retained own key/undefined value. `C(r)`
+is the cache's normal record charge:64 bytes plus UTF-16 record/identity keys,
+record-specific metadata, and an address descriptor where present. The same
+`cacheRecordMetadata` function computes admission and staging costs.
+
+One incoming success owns a metadata credit before validation creates its ID set.
+For a range, the credit is:
+
+```
+128 + C(incoming range metadata)
+    + sum(C(topology descriptor with metadataBytes = 2 * W(group)))
+```
+
+Range metadata is `192 + 264 * entryCount + W(route) + 16 * address.length`.
+For a summary, the credit is `128 + C(summary with metadataBytes = 2 * ownedBytes)`.
+The credit is itself an external cache record, so its own64-byte cache header and
+both fixed key strings are additionally charged. The128 bytes cover its single
+owner/release descriptor. Computing the credit walks the owned snapshot; it does
+not construct topology or comparison maps. Each incoming group is charged even
+on replacement. The credit is exchanged for final records in the same cache
+transaction, never released before admission. Refusal preserves old payload and
+evidence. A replacement near the metadata ceiling may therefore refuse explicitly;
+Retry is required after capacity changes, with no repeated-demand fetch loop.
+
+| Ownership family          | Current retained structures                                                                                                                          | One preparation's structures and lifetime                                                                                                                                                                     | Disjoint source                                                                                                                                                                                                                                                                                  | Peak cardinality                                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Transport/body            | Raw success values; accepted immutable bodies are charged separately as payload/summary                                                              | One owned deep copy while raw and owned coexist; source descriptors/keys visited during copy                                                                                                                  | Raw ingress leases plus one pre-dispatch owned-copy lease, each capped by responseBytes. Never used for retained index metadata                                                                                                                                                                  | Default three raw bodies plus one owned stage; physical maximum remains four                                                              |
+| Range payload views       | Loaded-slot maps, slot wrappers, loaded rank/node array                                                                                              | Validation ID set **or**, later, candidate slot/rank array. Validation finishes before publication builds slots                                                                                               | Existing256 bytes/entry, partitioned128 current and128 candidate. Variable route/address keys use the per-range192+W(route)+16×address allowance                                                                                                                                                 | At most5000 retained entries; one incoming block≤1000 has its full additional credit before indexing                                      |
+| Compact range evidence    | Uint32Array sibling offsets and one per-range index header                                                                                           | Replacement offsets; temporary iterable/sort storage occurs after validation and before candidate slot arrays                                                                                                 | Added8 bytes/entry covers current+replacement offsets; temporary iterable/sort storage uses the candidate128-byte slot allowance during that nonoverlapping phase. Added64/range owns the compact index header                                                                                   | 5000 retained offsets plus≤1000 incoming; no historical range indexes                                                                     |
+| Cache owner               | Retained record wrappers, cache map and canonical record keys                                                                                        | One cache candidate map, changed-key set, eviction descriptors; a failed successor invalidates its predecessor                                                                                                | C(r)'s64-byte header/key charge; per-kind record metadata owns the referenced descriptor/wrapper storage. No payload slot or ordinal allowance reused here                                                                                                                                       | One current map plus one candidate map; record counts bounded by admitted cache kinds and one credited incoming block                     |
+| Topology/current          | ModelGroup descriptors, retention record/group indexes, resident membership, immutable SparseIndex group/branch descriptors, accepted topology array | None of these accepted objects is mutated during preparation                                                                                                                                                  | Current portion of2×W(group); cache-owned record keys remain in C(r), separate from topology-derived keys                                                                                                                                                                                        | 8192 admitted topology nodes globally, including root; fixture5001                                                                        |
+| Topology/candidate        | Compatible accepted descriptors are shared                                                                                                           | Retention phase: known/group maps, retained-record map, resident set, records/changed/drop arrays. Geometry phase: retained candidate maps plus sparse group/branch maps, sibling arrays and ancestor scratch | Remaining portion of2×W(group), exclusively one compatible candidate; full incoming C(topology) credit covers new descriptors/keys. Retention scan locals are dropped when its generator returns **before** geometry construction, so these phase maxima are not added as simultaneous histories | Existing topology plus≤1000 credited incoming descriptors before pruning. One active builder and one plan; never two candidate geometries |
+| Expansion/global metadata | Expansion set/keys, wanted ranges, request/listener/query/session descriptors                                                                        | One proposed intent and candidate references                                                                                                                                                                  | Existing explicitly charged expansion, viewport, request, listener, query/session records; staging has its own fixed credit record                                                                                                                                                               | Expansion≤2048, demand≤64 blocks, one coalesced pending viewport, bounded scheduler owners                                                |
+
+For the smallest valid one-level descriptor with column `a`, empty-string key,
+ordinal/count zero, W(group)=370 bytes: the existing topology envelope is740 bytes,
+plus normal cache header/key charges. The fixture descriptor is382–400 bytes
+before expansion. These envelopes include serialized field/key padding as well as
+fixed reference structures; they are not only the64-byte W header. Shared immutable
+body/route objects are not deep-copied into topology maps. Variable identity strings
+remain charged through W and C, including escaping and type tags. Candidate storage
+uses the maximum of consecutive retention, geometry and view phases, not the sum of
+all historical allocations. Engine allocator/GC retention is outside these logical
+ownership counters; externally retained old snapshots remain consumer-owned.
+
+Internal ownership assertions verify at most one retention builder/candidate/credit,
+and zero after cancellation/source closure. Cancel closes the generator and clears
+its plan cell before releasing credit. Guard failures, estimator exceptions,
+rebase, validation refusal and disposal all pass through credit release; an obsolete
+release cannot remove a successor's reservation. Previously published snapshots keep
+their immutable maps. Successful credit exchange adds no permanent metadata charge.
+
+The final preparation phase now yields a real task before atomic commit/publication.
+The shared response queue budget carries commit/cleanup time into the next response,
+so consecutive sub-budget responses cannot drain indefinitely in one microtask turn.
+Loading-intent regressions await the staged publication and retain their original
+projection assertions.

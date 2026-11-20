@@ -42,6 +42,12 @@ export function createRetentionPlan<TRow extends object>(
   let evictions = state!.evictions;
   let preparing: Generator<void, SparseIndex | undefined> | undefined;
   return {
+    get hasCandidate() {
+      return state !== undefined;
+    },
+    get hasBuilder() {
+      return preparing !== undefined;
+    },
     get evictions() {
       return evictions;
     },

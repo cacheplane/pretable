@@ -1,3 +1,4 @@
+import { incomingMetadataSteps } from "./incoming-metadata";
 import { wireBytes } from "./wire-cost";
 export { wireBytes } from "./wire-cost";
 import {
@@ -48,11 +49,54 @@ export class ModelRetention<TRow extends object> {
   current = 0;
   capacity: CacheFailure | undefined;
   private scopes = new Set<number>();
+  private incomingCredit: { generation: number; release(): void } | undefined;
+  *reserveIncomingSteps(
+    generation: number,
+    value: PretableRemoteRange<TRow> | PretableRemoteSummary,
+    ownedBytes: number,
+  ): Generator<void, { key: string; release(): void } | undefined> {
+    if (this.incomingCredit)
+      throw new Error("Remote preparation must be exclusive");
+    const metadataBytes =
+      128 + (yield* incomingMetadataSteps(generation, value, ownedBytes));
+    const key = "admission-stage";
+    const plan = this.prepare({
+      additions: [
+        { scope: -1, key, kind: "external", value: undefined, metadataBytes },
+      ],
+    });
+    if (!plan || plan.evictions.length || !plan.commit()) {
+      plan?.discard();
+      this.capacity = "metadata-capacity";
+      return;
+    }
+    const credit = {
+      generation,
+      key,
+      release: () => {
+        if (this.incomingCredit !== credit) return;
+        this.incomingCredit = undefined;
+        if (this.records.has(this.id({ scope: -1, key }))) this.dropGlobal(key);
+      },
+    };
+    this.incomingCredit = credit;
+    return credit;
+  }
   private residentGroups = new Set<string>();
   private geometry: RetainedGeometry | undefined;
   private pendingPlan: ReturnType<typeof createRetentionPlan<TRow>> | undefined;
   private preparing:
     Generator<void, PreparedRetention<TRow> | undefined> | undefined;
+  /** Internal ownership evidence; no candidate data escapes this diagnostic. */
+  get preparationOwnership() {
+    return {
+      builders:
+        Number(this.preparing !== undefined) +
+        Number(this.pendingPlan?.hasBuilder ?? false),
+      candidates: Number(this.pendingPlan?.hasCandidate ?? false),
+      credits: Number(this.incomingCredit !== undefined),
+    };
+  }
   private invalidateCandidate() {
     this.preparing?.return(undefined);
     this.preparing = undefined;
@@ -105,6 +149,8 @@ export class ModelRetention<TRow extends object> {
     return true;
   }
   close(scope: number) {
+    if (this.incomingCredit?.generation === scope)
+      this.incomingCredit.release();
     this.invalidateCandidate();
     this.cache.closeScope(scope);
     this.scopes.delete(scope);

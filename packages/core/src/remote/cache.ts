@@ -119,6 +119,28 @@ const failure = (reason: CacheFailure): CachePreparation => ({
   reason,
 });
 
+/** Accounted record/map/key ownership, shared by staged credit and admission. */
+export function cacheRecordMetadata(record: CacheRecord): number {
+  const key = identity(record.scope, record.key),
+    address = record.address;
+  return (
+    64 +
+    2 * (record.key.length + key.length) +
+    (record.metadataBytes ?? 0) +
+    (address
+      ? 32 +
+        address.route.reduce(
+          (n, part) =>
+            n +
+            48 +
+            2 * part.columnId.length +
+            (typeof part.key === "string" ? 2 * part.key.length : 8),
+          0,
+        )
+      : 0)
+  );
+}
+
 export class RemoteCache {
   readonly limits: Readonly<RemoteCacheLimits>;
   private records = new Map<string, Retained>();
@@ -333,21 +355,7 @@ export class RemoteCache {
           return failure("invalid-cost");
         if (address) canonicalRemoteRoute(address.route);
         const key = identity(record.scope, record.key);
-        const metadata =
-          64 +
-          2 * (record.key.length + key.length) +
-          (record.metadataBytes ?? 0) +
-          (address
-            ? 32 +
-              address.route.reduce(
-                (n, part) =>
-                  n +
-                  48 +
-                  2 * part.columnId.length +
-                  (typeof part.key === "string" ? 2 * part.key.length : 8),
-                0,
-              )
-            : 0);
+        const metadata = cacheRecordMetadata(record);
         if (!safe(metadata)) return failure("invalid-cost");
         if (added.has(key)) return failure("invalid-cost");
         added.add(key);

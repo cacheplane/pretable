@@ -651,3 +651,39 @@ it("discards completed retention when session ownership guard throws before the 
   });
   model.dispose();
 });
+
+it("starts the atomic response commit in a fresh task after preparation", async () => {
+  vi.useFakeTimers();
+  const now = vi.spyOn(performance, "now").mockReturnValue(0);
+  const { ModelRetention } = await import("../model-retention");
+  const original = ModelRetention.prototype.prepareSteps;
+  const commits = vi.fn();
+  vi.spyOn(ModelRetention.prototype, "prepareSteps").mockImplementation(
+    function* (this: InstanceType<typeof ModelRetention>, input) {
+      const plan = yield* original.call(this, input);
+      if (
+        plan &&
+        input.additions?.some((record) => record.kind === "payload")
+      ) {
+        const commit = plan.commit;
+        plan.commit = () => {
+          commits();
+          return commit();
+        };
+      }
+      return plan;
+    },
+  );
+  try {
+    const pending = ready();
+    for (let i = 0; i < 100; i++) await Promise.resolve();
+    expect(commits).not.toHaveBeenCalled();
+    await vi.runAllTimersAsync();
+    const { model } = await pending;
+    expect(commits).toHaveBeenCalledTimes(1);
+    model.dispose();
+  } finally {
+    now.mockRestore();
+    vi.useRealTimers();
+  }
+});

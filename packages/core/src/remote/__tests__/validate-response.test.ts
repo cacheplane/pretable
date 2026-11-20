@@ -374,3 +374,44 @@ it("retains only admitted branch count evidence after parent payload eviction", 
   expect(v.validateRequest(child).ok).toBe(true);
   expect(v.acceptRange(child, child).ok).toBe(true);
 });
+
+it("keeps typed duplicate identities and signed zero distinct inside one response", () => {
+  const validator = createResponseValidator<Row, Columns>(query, session);
+  const value = range(0, 3, {
+    entries: [0, -0, "0"].map((id) => ({
+      kind: "leaf",
+      id,
+      row: { value: 0 },
+    })),
+  });
+  expect(validator.acceptRange(value, value).ok).toBe(true);
+  const duplicate = range(0, 3, {
+    entries: [0, 0, "0"].map((id) => ({ kind: "leaf", id, row: { value: 0 } })),
+  });
+  expect(
+    createResponseValidator<Row, Columns>(query, session).acceptRange(
+      duplicate,
+      duplicate,
+    ).ok,
+  ).toBe(false);
+  const route = [{ columnId: "value", key: 0 }];
+  const mixed = range(0, 2, {
+    entries: [
+      { kind: "leaf", id: 0, row: { value: 0 } },
+      {
+        kind: "group",
+        id: remoteGroupId(route),
+        route,
+        label: "zero",
+        childCount: 0,
+        aggregates: {},
+      },
+    ],
+  });
+  expect(
+    createResponseValidator<Row, Columns>(query, session).acceptRange(
+      mixed,
+      mixed,
+    ).ok,
+  ).toBe(false);
+});

@@ -811,7 +811,7 @@ it("recomputes stale grouped viewport intent against the replacement query proje
   expect(f.reads).toHaveLength(3);
   expect(f.reads[2]!.request).toMatchObject({ route: [], start: 2, end: 4 });
   await f.read(2);
-  expect(f.model.readSlot(2)?.kind).toBe("loaded");
+  await expect.poll(() => f.model.readSlot(2)?.kind).toBe("loaded");
   f.model.dispose();
 });
 
@@ -886,7 +886,7 @@ it.each(["same-query", "rejected-viewport"] as const)(
     if (action === "rejected-viewport")
       expect(f.model.getSnapshot().capacity).toBe("minimum-visible-too-large");
     await f.read(1);
-    expect(f.model.readSlot(4)?.kind).toBe("loaded");
+    await expect.poll(() => f.model.readSlot(4)?.kind).toBe("loaded");
     f.model.dispose();
   },
 );
@@ -1062,4 +1062,44 @@ it("refuses oversized retained undefined keys without replacing evidence or repe
   await f.model.demandViewport({ start: 2, end: 4 });
   expect(f.reads).toHaveLength(2);
   f.model.dispose();
+});
+
+it("refuses incoming metadata before identity indexes and allows explicit retry without losing old evidence", async () => {
+  const { ModelRetention } = await import("../model-retention");
+  const { RangeEvidence } = await import("../range-evidence");
+  const f = setup();
+  await f.ready();
+  const reserve = vi
+    .spyOn(ModelRetention.prototype, "reserveIncomingSteps")
+    .mockImplementation(function* () {
+      return undefined;
+    });
+  const compare = vi.spyOn(RangeEvidence.prototype, "find");
+  try {
+    const pending = f.model.demandViewport({ start: 2, end: 4 });
+    await f.read(1);
+    await pending;
+    expect(compare).not.toHaveBeenCalled();
+    expect(f.model.getSnapshot().capacity).toBe("metadata-capacity");
+    expect(f.model.getDiagnostics()).toMatchObject({
+      payloadEntries: 2,
+      evidenceNodes: 2,
+      ingressBytes: 0,
+    });
+    await f.model.demandViewport({ start: 2, end: 4 });
+    expect(f.reads).toHaveLength(2);
+    reserve.mockRestore();
+    const retry = f.model.retry();
+    await f.read(2);
+    await retry;
+    expect(f.model.getDiagnostics()).toMatchObject({
+      payloadEntries: 4,
+      evidenceNodes: 4,
+      ingressBytes: 0,
+    });
+  } finally {
+    reserve.mockRestore();
+    compare.mockRestore();
+    f.model.dispose();
+  }
 });

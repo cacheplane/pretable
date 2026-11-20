@@ -137,8 +137,14 @@ export function createRemoteModel<TRow extends object, TColumns>(
   const sessionController = createRemoteSessionController(provider, {
     prepareResponse: createPreparationQueue(),
     responseBytes: retention.cache.limits.responseBytes,
-    onCapacity: () => {
-      retention.capacity = "invalid-cost";
+    reserveAdmission: (input) =>
+      retention.reserveIncomingSteps(
+        input.generation,
+        input.value,
+        input.ownedBytes,
+      ),
+    onCapacity: (reason) => {
+      retention.capacity = reason;
     },
     rootRangeSize: blockSize,
     now: options.now,
@@ -296,6 +302,9 @@ export function createRemoteModel<TRow extends object, TColumns>(
         const staged = await prepareCooperatively(
           retention.prepareSteps({
             additions: [record],
+            drops: input.creditKey
+              ? [{ scope: -1, key: input.creditKey }]
+              : undefined,
             root: input.root,
             expectedEpoch: attemptEpoch,
           }),
@@ -327,6 +336,22 @@ export function createRemoteModel<TRow extends object, TColumns>(
             input.budget,
           );
           if (!indexed.ok || !input.current()) {
+            plan.discard();
+            return;
+          }
+          // Keep the final preparation slice out of the atomic publication
+          // task. The shared budget then also accounts for commit/cleanup before
+          // the next success job decides whether it must yield.
+          input.budget.remaining = 0;
+          const boundary = await prepareCooperatively(
+            (function* () {
+              yield;
+            })(),
+            input.signal,
+            input.current,
+            input.budget,
+          );
+          if (!boundary.ok || !input.current()) {
             plan.discard();
             return;
           }
