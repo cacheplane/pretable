@@ -386,3 +386,197 @@ it("invalidated retention candidates release geometry preparation authority imme
   expect(() => plan.index(1)).toThrow("Invalidated remote candidate");
   expect(build).not.toHaveBeenCalled();
 });
+
+it("drops cooperative retention candidates on a newer metadata transaction without publishing them", async () => {
+  const { ModelRetention } = await import("../model-retention");
+  const retention = new ModelRetention<Row>({});
+  retention.begin(1);
+  const range = {
+    ...session,
+    route: [],
+    start: 0,
+    end: 2000,
+    siblingCount: 2000,
+    entries: Array.from({ length: 2000 }, (_, id) => ({
+      kind: "leaf" as const,
+      id,
+      row: { value: id },
+    })),
+  };
+  const steps = retention.prepareSteps({
+    root: true,
+    additions: [retention.responseRecord(1, range, true)],
+  });
+  expect(steps.next().done).toBe(false);
+  expect(retention.cache.snapshot().payloadEntries).toBe(0);
+  retention.dropGlobal("unrelated");
+  expect(steps.next()).toEqual({ done: true, value: undefined });
+  expect(retention.visible).toBe(0);
+  expect(retention.cache.snapshot().payloadEntries).toBe(0);
+});
+
+it("rejects a response whose cooperative acceptance crosses the transport's monotonic deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    const { createDeferredProvider } = await import("./fixtures/provider");
+    const { query } = await import("./fixtures/responses");
+    const f = createDeferredProvider<Row, Columns>({
+      ...capabilities,
+      maxRangeSize: 1000,
+    });
+    const model = createRemoteModel(f.provider, { blockSize: 1000 });
+    const pending = model.setQuery(query);
+    f.opens[0]!.resolve({
+      ok: true,
+      value: {
+        ...session,
+        queryKey: f.opens[0]!.request.queryKey,
+        rootCount: 1000,
+      },
+    });
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(29999);
+    const request = f.reads[0]!.request;
+    f.reads[0]!.resolve({
+      ok: true,
+      value: {
+        ...request,
+        siblingCount: 1000,
+        entries: Array.from({ length: 1000 }, (_, id) => ({
+          kind: "leaf",
+          id,
+          row: { value: id },
+        })),
+      },
+    });
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(model.getSnapshot().residentCount).toBe(0);
+    expect(model.getSnapshot().error?.code).toBe("timeout");
+    expect(model.getDiagnostics().ingressBytes).toBe(0);
+    model.dispose();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("builds candidate sparse geometry cooperatively without mutating the accepted index", () => {
+  const index = new SparseIndex(2000);
+  const groups = Array.from({ length: 2000 }, (_, ordinal) => ({
+    id: String(ordinal),
+    parent: null,
+    ordinal,
+    childCount: 2,
+  }));
+  const steps = index.resolveBatchSteps(groups, ["0"]);
+  expect(steps.next().done).toBe(false);
+  expect(index.rowCount).toBe(2000);
+  expect(index.allocatedNodes).toBe(1);
+  steps.return();
+  expect(index.rowCount).toBe(2000);
+  expect(index.allocatedNodes).toBe(1);
+  const accepted = index.resolveBatchSteps(groups, ["0"]);
+  while (!accepted.next().done) {
+    /* Bounded primitive work can be scheduled. */
+  }
+  expect(index.rowCount).toBe(2002);
+  expect(index.at(1)).toEqual({ parent: "0", ordinal: 0 });
+});
+
+it("closes a suspended geometry builder when its candidate is superseded", async () => {
+  const { ModelRetention } = await import("../model-retention");
+  const retention = new ModelRetention<Row>({});
+  retention.begin(1);
+  const route = [{ columnId: "value", key: 1 }];
+  const range = {
+    ...session,
+    route: [],
+    start: 0,
+    end: 1,
+    siblingCount: 1,
+    entries: [
+      {
+        kind: "group" as const,
+        id: remoteGroupId(route),
+        route,
+        label: "1",
+        childCount: 2,
+        aggregates: {},
+      },
+    ],
+  };
+  const plan = retention.prepare({
+    root: true,
+    additions: [retention.responseRecord(1, range, true)],
+  })!;
+  const steps = plan.indexSteps(1);
+  expect(steps.next().done).toBe(false);
+  retention.dropGlobal("unrelated");
+  expect(steps.next()).toEqual({ done: true, value: undefined });
+  expect(plan.commit()).toBe(false);
+  expect(retention.visible).toBe(0);
+});
+
+it("rebases an owned response after metadata changes and an identical query during retention preparation", async () => {
+  vi.useFakeTimers();
+  try {
+    const { createDeferredProvider } = await import("./fixtures/provider");
+    const { query } = await import("./fixtures/responses");
+    const { ModelRetention } = await import("../model-retention");
+    const f = createDeferredProvider<Row, Columns>({
+      ...capabilities,
+      maxRangeSize: 1000,
+    });
+    const model = createRemoteModel(f.provider, { blockSize: 1000 });
+    const pending = model.setQuery(query);
+    f.opens[0]!.resolve({
+      ok: true,
+      value: {
+        ...session,
+        queryKey: f.opens[0]!.request.queryKey,
+        rootCount: 1000,
+      },
+    });
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    let preparing = false;
+    const original = ModelRetention.prototype.prepareSteps;
+    vi.spyOn(ModelRetention.prototype, "prepareSteps").mockImplementation(
+      function (this: InstanceType<typeof ModelRetention>, input) {
+        if (input.additions?.some((record) => record.kind === "payload"))
+          preparing = true;
+        return original.call(this, input);
+      },
+    );
+    const request = f.reads[0]!.request;
+    f.reads[0]!.resolve({
+      ok: true,
+      value: {
+        ...request,
+        siblingCount: 1000,
+        entries: Array.from({ length: 1000 }, (_, id) => ({
+          kind: "leaf",
+          id,
+          row: { value: id },
+        })),
+      },
+    });
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    for (let i = 0; i < 100 && !preparing; i++)
+      await vi.advanceTimersToNextTimerAsync();
+    const during = model.getSnapshot();
+    const off = model.subscribe(() => {});
+    await model.setQuery(query);
+    off();
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(during.residentCount).toBe(0);
+    expect(model.getSnapshot().residentCount).toBe(1000);
+    expect(model.getSnapshot().status.state).toBe("ready");
+    expect(f.reads).toHaveLength(1);
+    expect(model.getDiagnostics().ingressBytes).toBe(0);
+    model.dispose();
+  } finally {
+    vi.useRealTimers();
+  }
+});

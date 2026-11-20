@@ -21,6 +21,12 @@ function count(value: number): number {
     throw new RangeError("Expected a nonnegative safe integer");
   return value;
 }
+function completeSteps<T>(steps: Generator<void, T>): T {
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
 /** Implicit sibling intervals plus bounded resolved group descriptors and expansion intent. */
 export class SparseIndex {
   private groups = new Map<string, SparseGroup>();
@@ -70,8 +76,15 @@ export class SparseIndex {
     groups: Iterable<SparseGroup>,
     expanded: Iterable<string> = this.expanded,
   ): void {
+    completeSteps(this.resolveBatchSteps(groups, expanded));
+  }
+  *resolveBatchSteps(
+    groups: Iterable<SparseGroup>,
+    expanded: Iterable<string> = this.expanded,
+  ): Generator<void, void> {
     const next = new Map(this.groups);
     for (const group of groups) {
+      yield;
       count(group.ordinal);
       count(group.childCount);
       if (!group.id) throw new Error("Group requires identity");
@@ -90,7 +103,7 @@ export class SparseIndex {
     const expansion = new Set(expanded);
     if (expansion.size > this.limits.maxExpanded)
       throw new RangeError("Expansion cap");
-    const branches = this.build(next, expansion);
+    const branches = yield* this.buildSteps(next, expansion);
     this.groups = next;
     this.expanded = expansion;
     this.branches = branches;
@@ -109,8 +122,15 @@ export class SparseIndex {
     groups: Map<string, SparseGroup>,
     expanded: Set<string>,
   ): Map<string | null, Branch> {
+    return completeSteps(this.buildSteps(groups, expanded));
+  }
+  private *buildSteps(
+    groups: Map<string, SparseGroup>,
+    expanded: Set<string>,
+  ): Generator<void, Map<string | null, Branch>> {
     const children = new Map<string | null, SparseGroup[]>();
     for (const group of groups.values()) {
+      yield;
       this.work++;
       let parent = group.parent;
       let depth = 1;
@@ -130,17 +150,21 @@ export class SparseIndex {
       children.set(group.parent, siblings);
     }
     const result = new Map<string | null, Branch>();
-    const visit = (id: string | null, size: number): Branch => {
+    const visit = function* (
+      id: string | null,
+      size: number,
+    ): Generator<void, Branch> {
       const branch: Branch = { count: size, extent: size, expanded: [] };
       const siblings = (children.get(id) ?? []).sort(
         (a, b) => a.ordinal - b.ordinal,
       );
       let previous = -1;
       for (const group of siblings) {
+        yield;
         if (group.ordinal >= size || group.ordinal === previous)
           throw new RangeError("Invalid sibling ordinal");
         previous = group.ordinal;
-        const subtree = visit(group.id, group.childCount);
+        const subtree = yield* visit(group.id, group.childCount);
         if (expanded.has(group.id)) {
           const extraBefore = branch.extent - size;
           const start = count(group.ordinal + extraBefore + 1);
@@ -158,7 +182,7 @@ export class SparseIndex {
       result.set(id, branch);
       return branch;
     };
-    visit(null, this.rootCount);
+    yield* visit(null, this.rootCount);
     return result;
   }
   at(rank: number): { parent: string | null; ordinal: number } | undefined {

@@ -1,3 +1,11 @@
+import {
+  createPreparationBudget,
+  type PreparationBudget,
+} from "./cooperative-work";
+import {
+  createAcceptanceDeadline,
+  type AcceptanceDeadline,
+} from "./acceptance-deadline";
 import { canonicalRemoteRoute, prepareRemoteQuery } from "./query";
 import {
   createResponseValidator,
@@ -28,6 +36,7 @@ export interface RemoteInvocation {
   readonly kind: "open" | "read" | "summary";
   /** Resolves after consumer acceptance/discard, independently of transport settlement. */
   readonly acceptanceDone?: Promise<void>;
+  readonly onDeadline?: (deadline: AcceptanceDeadline) => void;
   readonly retainedMetadataBytes?: number;
   readonly ownership?: number;
   readonly generation: number;
@@ -57,12 +66,18 @@ export interface RemoteLifecycleReset {
   };
 }
 export interface RemoteAdmission<TRow extends object> {
+  readonly signal: PretableRemoteSignal;
+  readonly current: () => boolean;
+  readonly budget: PreparationBudget;
+  readonly ownedBytes?: number;
   readonly generation: number;
   readonly root: boolean;
   readonly session: PretableRemoteSession;
   readonly value: PretableRemoteRange<TRow> | PretableRemoteSummary;
 }
 export interface RemoteAdmissionPlan {
+  readonly discard?: () => void;
+  readonly retry?: () => boolean;
   readonly commit: () => boolean;
   readonly evictions: readonly {
     readonly route: PretableRemoteRoute;
@@ -75,9 +90,11 @@ type RemoteInvoke = <T>(
   run: (signal?: PretableRemoteSignal) => Promise<PretableRemoteResult<T>>,
 ) => Promise<PretableRemoteResult<T>>;
 interface Options<TRow extends object> {
+  readonly responseBytes?: number;
+  readonly onCapacity?: () => void;
   readonly prepareResponse?: (
     signal: PretableRemoteSignal,
-    work: () => Promise<void>,
+    work: (budget: PreparationBudget) => Promise<void>,
   ) => Promise<void>;
   readonly prepareQuery?: (generation: number) => boolean;
   readonly prepareSession?: (
@@ -87,7 +104,8 @@ interface Options<TRow extends object> {
   /** Preflight may run sizing code. Commit must be synchronous and callback-free. */
   readonly prepareAdmission?: (
     input: RemoteAdmission<TRow>,
-  ) => RemoteAdmissionPlan | undefined;
+  ) =>
+    RemoteAdmissionPlan | undefined | Promise<RemoteAdmissionPlan | undefined>;
   readonly rootRangeSize?: number;
   readonly now?: () => number;
   readonly onReset?: (event: RemoteLifecycleReset) => void;
@@ -137,6 +155,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
   }[] = [];
   let ownerSequence = 0;
   const ownerIdentities = new WeakMap<AbortController, number>();
+  const deadlines = new WeakMap<AbortController, AcceptanceDeadline>();
   let snapshot: RemoteSessionSnapshot<TRow> = Object.freeze({
     state: "idle",
     generation,
@@ -309,6 +328,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
               key,
               signal: owner.signal,
               acceptanceDone: completions.get(owner)?.promise,
+              onDeadline: (deadline) => deadlines.set(owner, deadline),
               ownership: ownerIdentities.get(owner),
               retainedMetadataBytes:
                 256 +
@@ -574,6 +594,10 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       owner = ownerFor(c, key);
     if (!owns(c, key, owner)) return;
     c.requests.set(key, request);
+    let acceptance: ReturnType<typeof createAcceptanceDeadline> | undefined;
+    const accepting = () =>
+      acceptance?.current() ??
+      (owns(c, key, owner) && !expired(c) && owns(c, key, owner));
     try {
       const response = await invoke(
         c,
@@ -590,25 +614,40 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         !owns(c, key, owner)
       )
         return;
-      const process = async () => {
-        if (!owns(c, key, owner) || expired(c) || !owns(c, key, owner)) return;
+      if (response.ok)
+        acceptance = createAcceptanceDeadline(
+          owner.signal,
+          deadlines.get(owner),
+          () => owns(c, key, owner) && !expired(c) && owns(c, key, owner),
+          () => {
+            c.owners.delete(key);
+            c.requests.delete(key);
+            owner.abort();
+            handleError(c, { code: "timeout" }, key, request);
+          },
+        );
+      const process = async (budget = createPreparationBudget()) => {
+        if (!accepting()) return;
         const answer = response.ok
           ? options.prepareResponse
             ? await c.validator!.acceptRangeCooperatively(
                 request,
                 response.value,
                 owner.signal,
-                () => owns(c, key, owner) && !expired(c) && owns(c, key, owner),
+                accepting,
+                budget,
+                options.responseBytes,
               )
             : c.validator!.acceptRange(request, response.value, false)
           : response;
-        if (
-          !answer ||
-          !owns(c, key, owner) ||
-          expired(c) ||
-          !owns(c, key, owner)
-        )
+        if (!answer || !accepting()) return;
+        if ("capacity" in answer && answer.capacity) {
+          c.owners.delete(key);
+          c.requests.delete(key);
+          options.onCapacity?.();
+          notify(snapshot);
           return;
+        }
         if (!answer.ok) {
           c.owners.delete(key);
           c.requests.delete(key);
@@ -616,18 +655,34 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
           return;
         }
         let plan: RemoteAdmissionPlan | undefined;
-        try {
-          plan = options.prepareAdmission?.({
-            generation: c.generation,
-            root,
-            session: c.session!,
-            value: answer.value,
-          });
-        } catch {
-          /* Composition reports its own admission diagnostic. */
-        }
-        if (!owns(c, key, owner)) return;
-        if (options.prepareAdmission && (!plan || !plan.commit())) {
+        for (;;) {
+          try {
+            plan = await options.prepareAdmission?.({
+              generation: c.generation,
+              root: root,
+              session: c.session!,
+              value: answer.value,
+              signal: owner.signal,
+              current: accepting,
+              budget,
+              ownedBytes:
+                "ownedBytes" in answer
+                  ? (answer.ownedBytes as number)
+                  : undefined,
+            });
+          } catch {
+            /* Composition reports its own admission diagnostic. */
+          }
+          if (!accepting()) {
+            plan?.discard?.();
+            return;
+          }
+          if (!options.prepareAdmission || plan?.commit()) break;
+          if (plan?.retry?.()) {
+            plan.discard?.();
+            plan = undefined;
+            continue;
+          }
           c.owners.delete(key);
           c.requests.delete(key);
           notify(snapshot);
@@ -671,6 +726,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
         await options.prepareResponse(owner.signal, process);
       else await process();
     } finally {
+      acceptance?.dispose();
       consumed(owner);
     }
   }
@@ -827,6 +883,10 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
       const key = `summary:${scope}`,
         owner = ownerFor(c, key);
       if (!owns(c, key, owner)) return;
+      let acceptance: ReturnType<typeof createAcceptanceDeadline> | undefined;
+      const accepting = () =>
+        acceptance?.current() ??
+        (owns(c, key, owner) && !expired(c) && owns(c, key, owner));
       try {
         const response = await invoke(c, key, owner, "summary", (signal) =>
           provider.summary(c.session!, scope, signal),
@@ -838,30 +898,72 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
           !owns(c, key, owner)
         )
           return;
-        const process = async () => {
-          if (!owns(c, key, owner) || expired(c) || !owns(c, key, owner))
-            return;
+        if (response.ok)
+          acceptance = createAcceptanceDeadline(
+            owner.signal,
+            deadlines.get(owner),
+            () => owns(c, key, owner) && !expired(c) && owns(c, key, owner),
+            () => {
+              c.owners.delete(key);
+              owner.abort();
+              handleError(c, { code: "timeout" }, key);
+            },
+          );
+        const process = async (budget = createPreparationBudget()) => {
+          if (!accepting()) return;
           const answer = response.ok
-            ? c.validator!.acceptSummary(scope, response.value, false)
+            ? options.prepareResponse
+              ? await c.validator!.acceptSummaryCooperatively(
+                  scope,
+                  response.value,
+                  owner.signal,
+                  accepting,
+                  budget,
+                  options.responseBytes,
+                )
+              : c.validator!.acceptSummary(scope, response.value, false)
             : response;
+          if (!answer || !accepting()) return;
+          if ("capacity" in answer && answer.capacity) {
+            c.owners.delete(key);
+            options.onCapacity?.();
+            notify(snapshot);
+            return;
+          }
           if (!answer.ok) {
             c.owners.delete(key);
             handleError(c, answer.error, key);
             return;
           }
           let plan: RemoteAdmissionPlan | undefined;
-          try {
-            plan = options.prepareAdmission?.({
-              generation: c.generation,
-              root: false,
-              session: c.session!,
-              value: answer.value,
-            });
-          } catch {
-            /* Composition reports its own admission diagnostic. */
-          }
-          if (!owns(c, key, owner)) return;
-          if (options.prepareAdmission && (!plan || !plan.commit())) {
+          for (;;) {
+            try {
+              plan = await options.prepareAdmission?.({
+                generation: c.generation,
+                root: false,
+                session: c.session!,
+                value: answer.value,
+                signal: owner.signal,
+                current: accepting,
+                budget,
+                ownedBytes:
+                  "ownedBytes" in answer
+                    ? (answer.ownedBytes as number)
+                    : undefined,
+              });
+            } catch {
+              /* Composition reports its own admission diagnostic. */
+            }
+            if (!accepting()) {
+              plan?.discard?.();
+              return;
+            }
+            if (!options.prepareAdmission || plan?.commit()) break;
+            if (plan?.retry?.()) {
+              plan.discard?.();
+              plan = undefined;
+              continue;
+            }
             c.owners.delete(key);
             notify(snapshot);
             return;
@@ -886,6 +988,7 @@ export function createRemoteSessionController<TRow extends object, TColumns>(
           await options.prepareResponse(owner.signal, process);
         else await process();
       } finally {
+        acceptance?.dispose();
         consumed(owner);
       }
     },

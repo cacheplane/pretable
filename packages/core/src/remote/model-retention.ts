@@ -1,3 +1,5 @@
+import { wireBytes } from "./wire-cost";
+export { wireBytes } from "./wire-cost";
 import {
   createRetentionPlan,
   type RetainedGeometry,
@@ -17,13 +19,22 @@ import type {
 export interface ModelGroup extends SparseGroup {
   readonly route: PretableRemoteRoute;
 }
-export const wireBytes = (value: unknown): number =>
-  64 + 2 * JSON.stringify(value).length;
 const addressKey = (r: {
   route: PretableRemoteRoute;
   start: number;
   end: number;
 }) => rangeAddress(r.route, r.start, r.end);
+interface RetentionInput {
+  additions?: readonly CacheRecord[];
+  drops?: readonly { scope: number; key: string }[];
+  root?: boolean;
+  expectedEpoch?: number;
+  expanded?: Set<string>;
+  protectedRanges?: ReadonlySet<string>;
+}
+type PreparedRetention<TRow extends object> = ReturnType<
+  typeof createRetentionPlan<TRow>
+>;
 /** The cache is the sole retention authority. These maps are indexes into the
  * same frozen accepted objects; their map/key/descriptor overhead is charged.
  * Metadata-only commands reuse compatible topology. Payload changes prune the
@@ -40,7 +51,11 @@ export class ModelRetention<TRow extends object> {
   private residentGroups = new Set<string>();
   private geometry: RetainedGeometry | undefined;
   private pendingPlan: ReturnType<typeof createRetentionPlan<TRow>> | undefined;
+  private preparing:
+    Generator<void, PreparedRetention<TRow> | undefined> | undefined;
   private invalidateCandidate() {
+    this.preparing?.return(undefined);
+    this.preparing = undefined;
     this.pendingPlan?.discard();
     this.pendingPlan = undefined;
   }
@@ -65,6 +80,8 @@ export class ModelRetention<TRow extends object> {
         if (this.pendingPlan === plan) this.pendingPlan = undefined;
       },
       (rootCount, groups, expanded) => this.index(rootCount, groups, expanded),
+      (rootCount, groups, expanded) =>
+        this.indexSteps(rootCount, groups, expanded),
     );
     this.pendingPlan = plan;
     return plan;
@@ -123,15 +140,31 @@ export class ModelRetention<TRow extends object> {
       .filter((r) => r.scope === scope && r.kind === "payload")
       .map((r) => r.value as PretableRemoteRange<TRow>);
   }
-  prepare(input: {
-    additions?: readonly CacheRecord[];
-    drops?: readonly { scope: number; key: string }[];
-    root?: boolean;
-    expectedEpoch?: number;
-    expanded?: Set<string>;
-    protectedRanges?: ReadonlySet<string>;
-  }) {
+  prepare(input: RetentionInput) {
+    const steps = this.prepareSteps(input);
+    for (;;) {
+      const step = steps.next();
+      if (step.done) return step.value;
+    }
+  }
+  prepareSteps(
+    input: RetentionInput,
+  ): Generator<void, PreparedRetention<TRow> | undefined> {
     this.invalidateCandidate();
+    const builder: Generator<void, PreparedRetention<TRow> | undefined> =
+      function* (this: ModelRetention<TRow>) {
+        try {
+          return yield* this.buildPreparation(input);
+        } finally {
+          if (this.preparing === builder) this.preparing = undefined;
+        }
+      }.call(this);
+    this.preparing = builder;
+    return builder;
+  }
+  private *buildPreparation(
+    input: RetentionInput,
+  ): Generator<void, PreparedRetention<TRow> | undefined> {
     const expectedEpoch = input.expectedEpoch ?? this.cache.snapshot().epoch;
     if (expectedEpoch !== this.cache.snapshot().epoch) {
       this.capacity = "stale-plan";
@@ -189,7 +222,8 @@ export class ModelRetention<TRow extends object> {
     }
     const candidate = new Map(this.records);
     if (input.protectedRanges) {
-      for (const [key, record] of candidate)
+      for (const [key, record] of candidate) {
+        yield;
         if (
           record.kind === "payload" &&
           record.scope === this.visible &&
@@ -199,17 +233,20 @@ export class ModelRetention<TRow extends object> {
             ...record,
             protected: input.protectedRanges.has(record.key),
           });
+      }
     }
     const releaseScopes = input.root
       ? [...this.scopes].filter((scope) => scope !== this.current)
       : [];
-    for (const [key, r] of candidate)
+    for (const [key, r] of candidate) {
+      yield;
       if (
         releaseScopes.includes(r.scope) ||
         r.kind === "topology" ||
         r.kind === "store"
       )
         candidate.delete(key);
+    }
     for (const drop of input.drops ?? []) candidate.delete(this.id(drop));
     for (const r of input.additions ?? []) candidate.set(this.id(r), r);
     const expanded = input.expanded ?? this.expanded;
@@ -221,7 +258,8 @@ export class ModelRetention<TRow extends object> {
     for (const r of input.additions ?? []) {
       if (r.kind !== "payload" || r.scope !== visible) continue;
       const range = r.value as PretableRemoteRange<TRow>;
-      range.entries.forEach((node, offset) => {
+      for (const [offset, node] of range.entries.entries()) {
+        yield;
         if (node.kind === "group")
           known.set(
             node.id,
@@ -233,7 +271,7 @@ export class ModelRetention<TRow extends object> {
               childCount: node.childCount,
             }),
           );
-      });
+      }
     }
     for (;;) {
       const groups = new Map<string, ModelGroup>();
@@ -251,8 +289,10 @@ export class ModelRetention<TRow extends object> {
         const range = r.value as PretableRemoteRange<TRow>;
         stores.set(canonicalRemoteRoute(range.route), range.route);
         if (range.route.length) retain(remoteGroupId(range.route));
-        for (const node of range.entries)
+        for (const node of range.entries) {
+          yield;
           if (node.kind === "group") retain(node.id);
+        }
       }
       const residentGroups = new Set(groups.keys());
       for (const id of expanded) retain(id);
@@ -269,6 +309,7 @@ export class ModelRetention<TRow extends object> {
           },
         );
         for (const group of groups.values()) {
+          yield;
           const previous = this.records.get(
             this.id({ scope: visible, key: `topology:${group.id}` }),
           );
@@ -298,15 +339,23 @@ export class ModelRetention<TRow extends object> {
             },
           );
       }
-      const retained = new Map(records.map((r) => [this.id(r), r]));
+      const retained = new Map<string, CacheRecord>();
+      const changed: CacheRecord[] = [];
+      for (const r of records) {
+        yield;
+        const key = this.id(r);
+        retained.set(key, r);
+        if (this.records.get(key) !== r) changed.push(r);
+      }
+      const drops: { scope: number; key: string }[] = [];
+      for (const r of this.records.values()) {
+        yield;
+        if (!releaseScopes.includes(r.scope) && !retained.has(this.id(r)))
+          drops.push({ scope: r.scope, key: r.key });
+      }
       const prepared = this.cache.prepare({
-        records: records.filter((r) => this.records.get(this.id(r)) !== r),
-        drops: [...this.records.values()]
-          .filter(
-            (r) =>
-              !releaseScopes.includes(r.scope) && !retained.has(this.id(r)),
-          )
-          .map((r) => ({ scope: r.scope, key: r.key })),
+        records: changed,
+        drops,
         releaseScopes,
         expectedEpoch,
       });
@@ -330,24 +379,34 @@ export class ModelRetention<TRow extends object> {
         continue;
       }
       if (prepared.ok) {
-        const evictions = [...this.records.values()]
-          .filter(
-            (r) =>
+        let transferred = false;
+        try {
+          const evictions: PretableRemoteRange<TRow>[] = [];
+          for (const r of this.records.values()) {
+            yield;
+            if (
               r.kind === "payload" &&
-              (!retained.has(this.id(r)) || incoming.has(this.id(r))),
-          )
-          .map((r) => r.value as PretableRemoteRange<TRow>);
-        return this.plan({
-          cachePlan: prepared.plan,
-          records: retained,
-          groups,
-          residentGroups,
-          expanded,
-          visible,
-          releaseScopes,
-          evictions,
-        });
+              (!retained.has(this.id(r)) || incoming.has(this.id(r)))
+            )
+              evictions.push(r.value as PretableRemoteRange<TRow>);
+          }
+          const plan = this.plan({
+            cachePlan: prepared.plan,
+            records: retained,
+            groups,
+            residentGroups,
+            expanded,
+            visible,
+            releaseScopes,
+            evictions,
+          });
+          transferred = true;
+          return plan;
+        } finally {
+          if (!transferred) this.cache.discard(prepared.plan);
+        }
       }
+
       if (
         prepared.reason === "stale-plan" ||
         prepared.reason === "invalid-cost"
@@ -370,9 +429,12 @@ export class ModelRetention<TRow extends object> {
     generation: number,
     value: PretableRemoteRange<TRow> | PretableRemoteSummary,
     protectedRange: boolean,
+    estimatedBytes?: number,
   ): CacheRecord {
     const bytes =
-      this.options.estimateResponseBytes?.(value) ?? wireBytes(value);
+      estimatedBytes ??
+      this.options.estimateResponseBytes?.(value) ??
+      wireBytes(value);
     if (
       !Number.isSafeInteger(bytes) ||
       bytes < 0 ||
@@ -407,6 +469,28 @@ export class ModelRetention<TRow extends object> {
       },
       protected: protectedRange,
     };
+  }
+  private *indexSteps(
+    rootCount: number,
+    groups: Map<string, ModelGroup>,
+    expanded: Set<string>,
+  ): Generator<void, SparseIndex> {
+    if (
+      this.geometry?.rootCount === rootCount &&
+      this.geometry.groups === groups &&
+      this.geometry.expanded === expanded
+    )
+      return this.geometry.index;
+    const index = new SparseIndex(rootCount, {
+      maxNodes: this.cache.limits.topology,
+      maxDepth: this.cache.limits.depth,
+      maxExpanded: this.cache.limits.expansions,
+    });
+    yield* index.resolveBatchSteps(
+      groups.values(),
+      [...expanded].filter((id) => groups.has(id)),
+    );
+    return index;
   }
   index(rootCount: number, groups = this.groups, expanded = this.expanded) {
     if (

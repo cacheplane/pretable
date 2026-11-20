@@ -1,4 +1,8 @@
-import { createPreparationQueue } from "./cooperative-work";
+import { wireBytesSteps } from "./wire-cost";
+import {
+  createPreparationQueue,
+  prepareCooperatively,
+} from "./cooperative-work";
 import {
   createRemoteSessionController,
   type RemoteInvocation,
@@ -90,12 +94,22 @@ export function createRemoteModel<TRow extends object, TColumns>(
       preparationLease ??= retention.cache.reserveIngress(
         retention.cache.limits.responseBytes,
       );
-      if (!preparationLease) return;
+      if (!preparationLease) {
+        if (!physicalLeases) {
+          retention.capacity = "metadata-capacity";
+          return false;
+        }
+        return;
+      }
       const lease = retention.cache.reserveIngress(
         retention.cache.limits.responseBytes,
       );
       if (!lease) {
-        if (!physicalLeases) releasePreparationLease();
+        if (!physicalLeases) {
+          releasePreparationLease();
+          retention.capacity = "metadata-capacity";
+          return false;
+        }
         return;
       }
       physicalLeases++;
@@ -122,6 +136,10 @@ export function createRemoteModel<TRow extends object, TColumns>(
   }
   const sessionController = createRemoteSessionController(provider, {
     prepareResponse: createPreparationQueue(),
+    responseBytes: retention.cache.limits.responseBytes,
+    onCapacity: () => {
+      retention.capacity = "invalid-cost";
+    },
     rootRangeSize: blockSize,
     now: options.now,
     onReset(event) {
@@ -222,11 +240,24 @@ export function createRemoteModel<TRow extends object, TColumns>(
         retention.prepare({ additions: [record], expectedEpoch: epoch }),
       );
     },
-    prepareAdmission(input) {
+    async prepareAdmission(input) {
+      let estimatedBytes = options.estimateResponseBytes
+        ? undefined
+        : input.ownedBytes;
+      if (!options.estimateResponseBytes && estimatedBytes === undefined) {
+        const cost = await prepareCooperatively(
+          wireBytesSteps(input.value),
+          input.signal,
+          input.current,
+          input.budget,
+        );
+        if (!cost.ok || !input.current()) return;
+        estimatedBytes = cost.value;
+      }
       const epoch = retention.cache.snapshot().epoch;
       const expectedCommand = command;
       const refuseSummary = () => {
-        if (!disposed && command === expectedCommand && "scope" in input.value)
+        if (!disposed && input.current() && "scope" in input.value)
           refusedSummaries.add(input.value.scope);
       };
       let record: CacheRecord;
@@ -243,6 +274,7 @@ export function createRemoteModel<TRow extends object, TColumns>(
                   input.value.end,
                 ),
               )),
+          estimatedBytes,
         );
       } catch {
         if (expectedCommand === command && !disposed)
@@ -251,37 +283,79 @@ export function createRemoteModel<TRow extends object, TColumns>(
         return;
       }
       if (disposed || command !== expectedCommand) return;
-      const plan = retention.prepare({
-        additions: [record],
-        root: input.root,
-        expectedEpoch: epoch,
-      });
-      if (!plan) {
+      if (retention.cache.snapshot().epoch !== epoch) {
+        retention.capacity = "stale-plan";
         refuseSummary();
         return;
       }
-      // Stage topology before committing any owner. SparseIndex validates exact
-      // safe extents and ancestry; observers never see a mutable index instance.
-      try {
-        plan.index(input.session.rootCount);
-      } catch {
-        retention.capacity = "intent-capacity";
-        plan.discard();
-        refuseSummary();
-        return;
+      // Rebase the same owned response when unrelated metadata invalidates only
+      // its candidate workspace. The operation deadline bounds retries; no
+      // historical candidate or extra provider request is retained.
+      while (!disposed && input.current()) {
+        const attemptEpoch = retention.cache.snapshot().epoch;
+        const staged = await prepareCooperatively(
+          retention.prepareSteps({
+            additions: [record],
+            root: input.root,
+            expectedEpoch: attemptEpoch,
+          }),
+          input.signal,
+          input.current,
+          input.budget,
+        );
+        if (!staged.ok || !input.current()) return;
+        const plan = staged.value;
+        if (!plan) {
+          if (retention.cache.snapshot().epoch !== attemptEpoch) continue;
+          refuseSummary();
+          return;
+        }
+        try {
+          const indexed = await prepareCooperatively(
+            plan.indexSteps(input.session.rootCount),
+            input.signal,
+            input.current,
+            input.budget,
+          );
+          if (!indexed.ok || !input.current()) {
+            plan.discard();
+            return;
+          }
+          if (
+            !indexed.value ||
+            retention.cache.snapshot().epoch !== attemptEpoch
+          ) {
+            plan.discard();
+            continue;
+          }
+        } catch {
+          plan.discard();
+          if (
+            input.current() &&
+            retention.cache.snapshot().epoch !== attemptEpoch
+          )
+            continue;
+          if (input.current()) retention.capacity = "intent-capacity";
+          refuseSummary();
+          return;
+        }
+        return {
+          evictions: plan.evictions,
+          discard: () => plan.discard(),
+          retry: () =>
+            input.current() &&
+            retention.cache.snapshot().epoch !== attemptEpoch,
+          commit: () => {
+            if (disposed || !input.current() || !plan.commit()) return false;
+            if (input.root) viewQuery = query;
+            if ("scope" in input.value)
+              refusedSummaries.delete(input.value.scope);
+            return true;
+          },
+        };
       }
-      return {
-        evictions: plan.evictions,
-        commit: () => {
-          if (disposed || command !== expectedCommand || !plan.commit())
-            return false;
-          if (input.root) viewQuery = query;
-          if ("scope" in input.value)
-            refusedSummaries.delete(input.value.scope);
-          return true;
-        },
-      };
     },
+
     async invoke<T>(
       operation: RemoteInvocation,
       run: (

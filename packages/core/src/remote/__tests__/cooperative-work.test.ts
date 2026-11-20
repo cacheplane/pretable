@@ -184,3 +184,193 @@ it("stages complete response validation without retaining partial evidence", asy
   expect((await pending)?.ok).toBe(true);
   expect(validator.retention().nodes).toBe(0);
 });
+
+it("cancels cooperative summary copies without retaining aggregate evidence", async () => {
+  vi.useFakeTimers();
+  const { createResponseValidator } = await import("../validate-response");
+  const { groupedQuery, session, summary, aggregate } =
+    await import("./fixtures/responses");
+  const validator = createResponseValidator(groupedQuery, session);
+  const value = {
+    ...summary(),
+    values: {
+      sum: { ...aggregate(), value: Array.from({ length: 2000 }, (_, i) => i) },
+    },
+  };
+  const owner = new AbortController();
+  const pending = validator.acceptSummaryCooperatively(
+    "filtered",
+    value,
+    owner.signal,
+    () => true,
+  );
+  owner.abort();
+  expect(await pending).toBeUndefined();
+  expect(validator.retention().summaries).toBe(0);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("counts JSON wire bytes incrementally with exact escaping and undefined semantics", async () => {
+  vi.useFakeTimers();
+  const { wireBytesSteps, wireBytes } = await import("../wire-cost");
+  const value = {
+    missing: undefined,
+    zero: -0,
+    text: "😀\ud800\n\u0000".repeat(50000),
+    nested: [undefined, null, { quote: '\\"' }],
+  };
+  const pending = prepareCooperatively(
+    wireBytesSteps(value),
+    new AbortController().signal,
+    () => true,
+  );
+  expect(vi.getTimerCount()).toBeGreaterThan(0);
+  await vi.runAllTimersAsync();
+  expect(await pending).toEqual({ ok: true, value: wireBytes(value) });
+});
+
+it("shares one work budget across promise continuations in the same processing task", async () => {
+  vi.useFakeTimers();
+  const { createPreparationBudget } = await import("../cooperative-work");
+  const budget = createPreparationBudget();
+  const owner = new AbortController();
+  let first = 0,
+    second = 0;
+  function* a() {
+    for (let i = 0; i < 600; i++) {
+      first++;
+      yield;
+    }
+  }
+  function* b() {
+    for (let i = 0; i < 600; i++) {
+      second++;
+      yield;
+    }
+  }
+  await prepareCooperatively(a(), owner.signal, () => true, budget);
+  const pending = prepareCooperatively(b(), owner.signal, () => true, budget);
+  expect(first).toBe(600);
+  expect(second).toBe(424);
+  await vi.runAllTimersAsync();
+  await pending;
+  expect(second).toBe(600);
+});
+
+it("shares task credit across consecutive response jobs instead of resetting on promises", async () => {
+  vi.useFakeTimers();
+  const { createPreparationQueue } = await import("../cooperative-work");
+  const queue = createPreparationQueue();
+  const owner = new AbortController();
+  let work = 0;
+  function* steps() {
+    for (let i = 0; i < 600; i++) {
+      work++;
+      yield;
+    }
+  }
+  await queue(owner.signal, async (budget) => {
+    await prepareCooperatively(steps(), owner.signal, () => true, budget);
+  });
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  const pending = queue(owner.signal, async (budget) => {
+    await prepareCooperatively(steps(), owner.signal, () => true, budget);
+  });
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  expect(work).toBe(1024);
+  await vi.runAllTimersAsync();
+  await pending;
+  expect(work).toBe(1200);
+});
+
+it("compares retained wire evidence cooperatively without serializing a second full signature", async () => {
+  vi.useFakeTimers();
+  const { equalWireSteps } = await import("../wire-equality");
+  const owner = new AbortController();
+  const a = {
+    values: Array.from({ length: 3000 }, (_, i) => ({
+      i,
+      z: -0,
+      u: undefined,
+    })),
+  };
+  const b = {
+    values: Array.from({ length: 3000 }, (_, i) => ({
+      u: undefined,
+      z: -0,
+      i,
+    })),
+  };
+  const pending = prepareCooperatively(
+    equalWireSteps(a, b),
+    owner.signal,
+    () => true,
+  );
+  expect(vi.getTimerCount()).toBeGreaterThan(0);
+  await vi.runAllTimersAsync();
+  expect(await pending).toEqual({ ok: true, value: true });
+  const zero = prepareCooperatively(
+    equalWireSteps({ z: -0 }, { z: 0 }),
+    owner.signal,
+    () => true,
+  );
+  const missing = prepareCooperatively(
+    equalWireSteps({ u: undefined }, {}),
+    owner.signal,
+    () => true,
+  );
+  expect(await zero).toEqual({ ok: true, value: false });
+  expect(await missing).toEqual({ ok: true, value: false });
+});
+
+it("charges undefined-valued own keys and stops an oversized copy before retaining all properties", async () => {
+  vi.useFakeTimers();
+  const { snapshotWireSteps } = await import("../validate-response");
+  const { wireBytes } = await import("../wire-cost");
+  const value = Object.fromEntries(
+    Array.from({ length: 5000 }, (_, i) => [
+      `${i}:${"x".repeat(100)}`,
+      undefined,
+    ]),
+  );
+  expect(wireBytes(value)).toBeGreaterThan(1_000_000);
+  const pending = prepareCooperatively(
+    snapshotWireSteps(value, 2048),
+    new AbortController().signal,
+    () => true,
+  );
+  const rejected = expect(pending).rejects.toMatchObject({
+    name: "ResponseCapacityError",
+  });
+  await vi.runAllTimersAsync();
+  await rejected;
+});
+
+it("closes prepared containers if the ownership guard throws", async () => {
+  vi.useFakeTimers();
+  try {
+    let closed = false,
+      checks = 0;
+    const steps = (function* () {
+      try {
+        for (let i = 0; i < 2000; i++) yield;
+      } finally {
+        closed = true;
+      }
+    })();
+    const pending = prepareCooperatively(
+      steps,
+      new AbortController().signal,
+      () => {
+        if (++checks > 1) throw new Error("guard");
+        return true;
+      },
+    );
+    const failed = expect(pending).rejects.toThrow("guard");
+    await vi.runAllTimersAsync();
+    await failed;
+    expect(closed).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});

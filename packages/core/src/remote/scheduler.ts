@@ -13,8 +13,8 @@ export interface RemoteSchedulerClock {
   clearTimeout(handle: unknown): void;
 }
 interface Options {
-  /** Undefined blocks dispatch until wake; release runs after physical settlement and acceptance. */
-  readonly acquire?: (demand: RemoteDemand) => (() => void) | undefined;
+  /** Undefined waits for capacity; false refuses permanently. Release runs after physical settlement and acceptance. */
+  readonly acquire?: (demand: RemoteDemand) => (() => void) | false | undefined;
   readonly maxActive?: number;
   readonly maxQueued?: number;
   readonly maxSubscribers?: number;
@@ -263,12 +263,16 @@ export function createRemoteScheduler(options: Options = {}) {
         )
           continue;
         if (options.acquire) {
-          let release: (() => void) | undefined;
+          let release: (() => void) | false | undefined;
           try {
             release = options.acquire(
               [...j.subscribers].find((s) => !s.done)!.demand,
             );
           } catch {
+            close(j, cancelled);
+            continue;
+          }
+          if (release === false) {
             close(j, cancelled);
             continue;
           }
@@ -358,6 +362,16 @@ export function createRemoteScheduler(options: Options = {}) {
     if (disposed || demand.signal.aborted || subscriberCount >= maxSubscribers)
       return Promise.resolve(cancelled);
     const job = j;
+    try {
+      demand.onDeadline?.({ at: job.deadline, clock });
+    } catch {
+      if (!job.subscribers.size) close(job, cancelled);
+      return Promise.resolve(cancelled);
+    }
+    if (disposed || job.closed || demand.signal.aborted) {
+      if (!job.subscribers.size) close(job, cancelled);
+      return Promise.resolve(cancelled);
+    }
     const promise = new Promise<Result>((resolve) => {
       const s: Subscriber = {
         demand,

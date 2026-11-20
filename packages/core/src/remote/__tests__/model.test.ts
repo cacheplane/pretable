@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createRemoteModel } from "../create-remote-model";
 import { createDeferredProvider } from "./fixtures/provider";
 import {
@@ -938,4 +938,128 @@ it("reserves one owned-copy stage before dispatch so physical responses cannot c
   expect(active).toBe(3);
   expect(ingress).toBe(16384);
   expect(f.model.getDiagnostics().ingressBytes).toBe(0);
+});
+
+it("refuses an idle raw-lease metadata failure, releases stage credit, and permits explicit retry", async () => {
+  const { RemoteCache } = await import("../cache");
+  const f = setup();
+  await f.ready();
+  const reserve = RemoteCache.prototype.reserveIngress;
+  let calls = 0;
+  const spy = vi
+    .spyOn(RemoteCache.prototype, "reserveIngress")
+    .mockImplementation(function (
+      this: InstanceType<typeof RemoteCache>,
+      bytes,
+    ) {
+      if (++calls === 2) return undefined; // metadata no longer fits the raw lease
+      return reserve.call(this, bytes);
+    });
+  let settled = false;
+  const pending = f.model.demandViewport({ start: 2, end: 4 }).then(() => {
+    settled = true;
+  });
+  await tick();
+  const during = f.model.getDiagnostics();
+  const settledBeforeDispose = settled;
+  spy.mockRestore();
+  if (!settled) {
+    f.model.dispose();
+    await pending;
+  }
+  expect(settledBeforeDispose).toBe(true);
+  expect(during.capacity).toBe("metadata-capacity");
+  expect(during.ingressBytes).toBe(0);
+  expect(during.payloadEntries).toBe(2);
+  const retry = f.model.retry();
+  await tick();
+  expect(f.reads).toHaveLength(2);
+  await f.read(1);
+  await retry;
+  f.model.dispose();
+});
+
+it("handles real near-full lease metadata without stranding an accepted view", async () => {
+  const { RemoteCache } = await import("../cache");
+  const baseline = setup();
+  await baseline.ready();
+  const offBaseline = Array.from({ length: 80 }, () =>
+    baseline.model.subscribe(() => {}),
+  );
+  await tick();
+  let calls = 0,
+    metadataBeforeRaw = 0;
+  const reserve = RemoteCache.prototype.reserveIngress;
+  const spy = vi
+    .spyOn(RemoteCache.prototype, "reserveIngress")
+    .mockImplementation(function (
+      this: InstanceType<typeof RemoteCache>,
+      bytes,
+    ) {
+      if (++calls === 2) metadataBeforeRaw = this.snapshot().metadataBytes;
+      return reserve.call(this, bytes);
+    });
+  const demand = baseline.model.demandViewport({ start: 2, end: 4 });
+  await tick();
+  spy.mockRestore();
+  await baseline.read(1);
+  await demand;
+  offBaseline.forEach((off) => off());
+  baseline.model.dispose();
+  expect(metadataBeforeRaw).toBeGreaterThan(0);
+
+  const f = setup({ limits: { metadataBytes: metadataBeforeRaw + 63 } });
+  await f.ready();
+  const off = Array.from({ length: 80 }, () => f.model.subscribe(() => {}));
+  await tick();
+  await f.model.demandViewport({ start: 2, end: 4 });
+  expect(f.reads).toHaveLength(1);
+  expect(f.model.getDiagnostics()).toMatchObject({
+    capacity: "metadata-capacity",
+    ingressBytes: 0,
+    payloadEntries: 2,
+  });
+  expect(f.model.getSnapshot().residentCount).toBe(2);
+  off.forEach((off) => off());
+  const retry = f.model.retry();
+  await tick();
+  expect(f.reads).toHaveLength(2);
+  await f.read(1);
+  await retry;
+  expect(f.model.getSnapshot().status.state).toBe("ready");
+  f.model.dispose();
+});
+
+it("refuses oversized retained undefined keys without replacing evidence or repeating demand", async () => {
+  const f = setup({ limits: { responseBytes: 2048, ingressBytes: 8192 } });
+  await f.ready();
+  const prior = f.model.getSnapshot();
+  const demand = f.model.demandViewport({ start: 2, end: 4 });
+  await f.read(1, [
+    {
+      kind: "leaf",
+      id: 2,
+      row: {
+        value: 2,
+        ...Object.fromEntries(
+          Array.from({ length: 100 }, (_, i) => [
+            `${i}:${"x".repeat(100)}`,
+            undefined,
+          ]),
+        ),
+      },
+    },
+    { kind: "leaf", id: 3, row: { value: 3 } },
+  ]);
+  await demand;
+  expect(f.model.getSnapshot().capacity).toBe("invalid-cost");
+  expect(f.model.getSnapshot().residentCount).toBe(2);
+  expect(f.model.getDiagnostics()).toMatchObject({
+    evidenceNodes: 2,
+    ingressBytes: 0,
+  });
+  expect(prior.readSlot(0)).toEqual(f.model.getSnapshot().readSlot(0));
+  await f.model.demandViewport({ start: 2, end: 4 });
+  expect(f.reads).toHaveLength(2);
+  f.model.dispose();
 });

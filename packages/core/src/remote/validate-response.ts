@@ -1,4 +1,9 @@
-import { prepareCooperatively } from "./cooperative-work";
+import { ResponseCapacityError, wireStringLengthSteps } from "./wire-cost";
+import { equalWireSteps } from "./wire-equality";
+import {
+  prepareCooperatively,
+  type PreparationBudget,
+} from "./cooperative-work";
 import { RangeEvidence } from "./range-evidence";
 import {
   canonicalRemoteRoute,
@@ -44,7 +49,19 @@ function completeSteps<T>(steps: Generator<void, T>): T {
 export function snapshotWire<T>(value: T): T {
   return completeSteps(snapshotWireSteps(value));
 }
-export function* snapshotWireSteps<T>(value: T): Generator<void, T> {
+export function* snapshotWireSteps<T>(
+  value: T,
+  maxBytes?: number,
+  onCost?: (bytes: number) => void,
+): Generator<void, T> {
+  let bytes = 64;
+  const tracked = maxBytes !== undefined || onCost !== undefined;
+  const charge = (amount: number) => {
+    if (!tracked) return;
+    bytes += amount;
+    if (!Number.isSafeInteger(bytes) || bytes > (maxBytes ?? Infinity))
+      throw new ResponseCapacityError();
+  };
   const active = new Set<object>();
   function* copy(v: unknown, depth: number): Generator<void, unknown> {
     check(depth <= 64);
@@ -53,10 +70,22 @@ export function* snapshotWireSteps<T>(value: T): Generator<void, T> {
       v === undefined ||
       typeof v === "string" ||
       typeof v === "boolean"
-    )
+    ) {
+      if (tracked)
+        charge(
+          typeof v === "string"
+            ? 2 * (yield* wireStringLengthSteps(v))
+            : v === undefined
+              ? 18
+              : v === null || v === true
+                ? 8
+                : 10,
+        );
       return v;
+    }
     if (typeof v === "number") {
       check(Number.isFinite(v));
+      if (tracked) charge(2 * JSON.stringify(v).length);
       return v;
     }
     check(typeof v === "object" && !active.has(v));
@@ -66,8 +95,9 @@ export function* snapshotWireSteps<T>(value: T): Generator<void, T> {
         (isArray ? Array.prototype : Object.prototype),
     );
     active.add(v);
-    const result: Record<string, unknown> | unknown[] = isArray ? [] : {};
     const keys = Reflect.ownKeys(v);
+    charge(4 + 2 * Math.max(0, keys.length - (isArray ? 2 : 1)));
+    const result: Record<string, unknown> | unknown[] = isArray ? [] : {};
     if (isArray) check(keys.length === (v as unknown[]).length + 1);
     const originals: unknown[] = [];
     for (const key of keys) {
@@ -76,6 +106,8 @@ export function* snapshotWireSteps<T>(value: T): Generator<void, T> {
         continue;
       }
       check(typeof key === "string");
+      if (tracked && !isArray)
+        charge(2 + 2 * (yield* wireStringLengthSteps(key)));
       const d = Object.getOwnPropertyDescriptor(v, key)!;
       check(d.enumerable && "value" in d);
       originals.push(d.value);
@@ -105,7 +137,9 @@ export function* snapshotWireSteps<T>(value: T): Generator<void, T> {
     active.delete(v);
     return Object.freeze(result);
   }
-  return (yield* copy(value, 0)) as T;
+  const owned = (yield* copy(value, 0)) as T;
+  onCost?.(bytes);
+  return owned;
 }
 /** Validate the transport envelope without reading accessors or traversing a
  * successful payload. Payload validation makes the one owned deep snapshot later.
@@ -142,23 +176,6 @@ export function validateRemoteResult<T>(
     return { ok: false, error: { code: "invalid-response" } };
   }
 }
-// Typed encoding of already-validated snapshots: order-insensitive objects,
-// distinct missing/undefined and -0/0. Never used as an externally logged key.
-function signature(v: unknown): string {
-  if (v === undefined) return '["undefined"]';
-  if (v === null) return '["null"]';
-  if (typeof v !== "object")
-    return JSON.stringify([typeof v, Object.is(v, -0) ? "-0" : v]);
-  if (Array.isArray(v)) return `["array",${v.map(signature).join(",")}]`;
-  return `["object",${Object.keys(v)
-    .sort()
-    .map(
-      (k) =>
-        JSON.stringify(k) + ":" + signature((v as Record<string, unknown>)[k]),
-    )
-    .join(",")}]`;
-}
-const equal = (a: unknown, b: unknown) => signature(a) === signature(b);
 function result<T>(operation: () => T): PretableRemoteResult<T> {
   try {
     return { ok: true, value: operation() };
@@ -238,7 +255,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
     check(route.length <= query.rowGroups.length);
     route.forEach((s, i) => check(s.columnId === query.rowGroups[i]?.columnId));
   }
-  function aggregateValues(
+  function* aggregateValues(
     values: Readonly<Record<string, PretableRemoteAggregateValue>>,
   ) {
     check(
@@ -248,6 +265,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
     );
     check(Object.keys(values).length === query.aggregates.length);
     for (const definition of query.aggregates) {
+      yield;
       const a = values[definition.id];
       check(
         a &&
@@ -289,9 +307,11 @@ export function createResponseValidator<TRow extends object, TColumns>(
     request: PretableRemoteRangeRequest,
     input: PretableRemoteRange<TRow>,
     retain: boolean,
+    maxBytes?: number,
+    onCost?: (bytes: number) => void,
   ): Generator<void, PretableRemoteRange<TRow>> {
     check(!disposed);
-    const r = yield* snapshotWireSteps(input);
+    const r = yield* snapshotWireSteps(input, maxBytes, onCost);
     provenance(request, session);
     provenance(r, session);
     routeValid(request.route);
@@ -335,7 +355,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
             count(node.childCount),
         );
         check(node.leafCount === undefined || count(node.leafCount));
-        aggregateValues(node.aggregates);
+        yield* aggregateValues(node.aggregates);
         const childCount = routeCount(canonicalRemoteRoute(node.route));
         if (childCount !== undefined && childCount !== node.childCount)
           fail("consistency");
@@ -351,7 +371,7 @@ export function createResponseValidator<TRow extends object, TColumns>(
       const old = indexed.at(route, ordinal),
         position = indexed.find(node);
       if (
-        (old && !equal(old, node)) ||
+        (old && !(yield* equalWireSteps(old, node))) ||
         (position !== undefined &&
           (position.route !== route || position.ordinal !== ordinal))
       )
@@ -359,6 +379,40 @@ export function createResponseValidator<TRow extends object, TColumns>(
     }
     if (retain) retainRange(r);
     return r;
+  }
+  function* summarySteps(
+    scope: "filtered" | "all",
+    input: PretableRemoteSummary,
+    retain: boolean,
+    maxBytes?: number,
+    onCost?: (bytes: number) => void,
+  ): Generator<void, PretableRemoteSummary> {
+    check(!disposed);
+    const s = yield* snapshotWireSteps(input, maxBytes, onCost);
+    provenance(s, session);
+    check(
+      s.scope === scope &&
+        s.registryVersion === query.registryVersion &&
+        s.authority === "server",
+    );
+    check(s.completeness === "complete" || s.completeness === "partial");
+    check(
+      Array.isArray(s.aggregateIds) &&
+        (yield* equalWireSteps(
+          [...s.aggregateIds].sort(),
+          query.aggregates.map((a) => a.id).sort(),
+        )),
+    );
+    yield* aggregateValues(s.values);
+    const prior = summaries.get(scope);
+    if (
+      prior &&
+      (prior.completeness !== s.completeness ||
+        !(yield* equalWireSteps(prior.values, s.values)))
+    )
+      fail("consistency");
+    if (retain) summaries.set(scope, s);
+    return s;
   }
   return {
     validateRequest(
@@ -391,15 +445,31 @@ export function createResponseValidator<TRow extends object, TColumns>(
       input: PretableRemoteRange<TRow>,
       signal: PretableRemoteSignal,
       current: () => boolean,
-    ): Promise<PretableRemoteResult<PretableRemoteRange<TRow>> | undefined> {
+      budget?: PreparationBudget,
+      maxBytes?: number,
+    ): Promise<
+      | (PretableRemoteResult<PretableRemoteRange<TRow>> & {
+          ownedBytes?: number;
+          capacity?: true;
+        })
+      | undefined
+    > {
       try {
+        let ownedBytes: number | undefined;
         const prepared = await prepareCooperatively(
-          rangeSteps(request, input, false),
+          rangeSteps(request, input, false, maxBytes, (bytes) => {
+            ownedBytes = bytes;
+          }),
           signal,
           current,
+          budget,
         );
-        return prepared.ok ? { ok: true, value: prepared.value } : undefined;
+        return prepared.ok
+          ? { ok: true, value: prepared.value, ownedBytes }
+          : undefined;
       } catch (error) {
+        if (error instanceof ResponseCapacityError)
+          return { ok: false, error: { code: "cancelled" }, capacity: true };
         return result(() => {
           throw error;
         });
@@ -410,34 +480,42 @@ export function createResponseValidator<TRow extends object, TColumns>(
       input: PretableRemoteSummary,
       retain = true,
     ): PretableRemoteResult<PretableRemoteSummary> {
-      return result(() => {
-        check(!disposed);
-        const s = snapshotWire(input);
-        provenance(s, session);
-        check(
-          s.scope === scope &&
-            s.registryVersion === query.registryVersion &&
-            s.authority === "server",
+      return result(() => completeSteps(summarySteps(scope, input, retain)));
+    },
+    async acceptSummaryCooperatively(
+      scope: "filtered" | "all",
+      input: PretableRemoteSummary,
+      signal: PretableRemoteSignal,
+      current: () => boolean,
+      budget?: PreparationBudget,
+      maxBytes?: number,
+    ): Promise<
+      | (PretableRemoteResult<PretableRemoteSummary> & {
+          ownedBytes?: number;
+          capacity?: true;
+        })
+      | undefined
+    > {
+      try {
+        let ownedBytes: number | undefined;
+        const prepared = await prepareCooperatively(
+          summarySteps(scope, input, false, maxBytes, (bytes) => {
+            ownedBytes = bytes;
+          }),
+          signal,
+          current,
+          budget,
         );
-        check(s.completeness === "complete" || s.completeness === "partial");
-        check(
-          Array.isArray(s.aggregateIds) &&
-            equal(
-              [...s.aggregateIds].sort(),
-              query.aggregates.map((a) => a.id).sort(),
-            ),
-        );
-        aggregateValues(s.values);
-        const prior = summaries.get(scope);
-        if (
-          prior &&
-          (prior.completeness !== s.completeness ||
-            !equal(prior.values, s.values))
-        )
-          fail("consistency");
-        if (retain) summaries.set(scope, s);
-        return s;
-      });
+        return prepared.ok
+          ? { ok: true, value: prepared.value, ownedBytes }
+          : undefined;
+      } catch (error) {
+        if (error instanceof ResponseCapacityError)
+          return { ok: false, error: { code: "cancelled" }, capacity: true };
+        return result(() => {
+          throw error;
+        });
+      }
     },
     retainTopology(nodes: typeof topology, lookup?: typeof topologyLookup) {
       topology = nodes;

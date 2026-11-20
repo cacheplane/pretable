@@ -33,8 +33,14 @@ export function createRetentionPlan<TRow extends object>(
     groups: Map<string, ModelGroup>,
     expanded: Set<string>,
   ) => SparseIndex,
+  build: (
+    rootCount: number,
+    groups: Map<string, ModelGroup>,
+    expanded: Set<string>,
+  ) => Generator<void, SparseIndex>,
 ) {
   let evictions = state!.evictions;
+  let preparing: Generator<void, SparseIndex | undefined> | undefined;
   return {
     get evictions() {
       return evictions;
@@ -50,12 +56,42 @@ export function createRetentionPlan<TRow extends object>(
       };
       return geometry;
     },
+    indexSteps(rootCount: number): Generator<void, SparseIndex | undefined> {
+      if (!state) throw new Error("Invalidated remote candidate");
+      const builder: Generator<void, SparseIndex | undefined> = (function* () {
+        try {
+          if (!state) return;
+          const candidate = state;
+          const geometry = yield* build(
+            rootCount,
+            candidate.groups,
+            candidate.expanded,
+          );
+          if (state !== candidate) return;
+          state.geometry = {
+            rootCount,
+            groups: state.groups,
+            expanded: state.expanded,
+            index: geometry,
+          };
+          return geometry;
+        } finally {
+          preparing = undefined;
+        }
+      })();
+      preparing?.return(undefined);
+      preparing = builder;
+      return builder;
+    },
     discard() {
+      preparing?.return(undefined);
+      preparing = undefined;
       if (state) cache.discard(state.cachePlan);
       state = undefined;
       evictions = [];
     },
     commit() {
+      if (preparing) return false;
       if (!state) return false;
       const candidate = state;
       state = undefined;

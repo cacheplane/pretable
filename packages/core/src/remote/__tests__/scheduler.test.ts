@@ -886,3 +886,26 @@ it("retains ingress until final failure acceptance, not only success acceptance"
   expect(leases).toBe(0);
   scheduler.dispose();
 });
+
+it("drops an empty job when deadline ownership callback throws", async () => {
+  const s = createRemoteScheduler({ maxQueued: 1 });
+  expect(
+    await s.schedule(
+      {
+        ...demand("bad"),
+        onDeadline() {
+          throw new Error("observer");
+        },
+      },
+      async () => ok,
+    ),
+  ).toEqual({ ok: false, error: { code: "cancelled" } });
+  expect(s.getSnapshot()).toMatchObject({
+    active: 0,
+    queued: 0,
+    subscribers: 0,
+    timers: 0,
+  });
+  expect(await s.schedule(demand("next"), async () => ok)).toEqual(ok);
+  s.dispose();
+});

@@ -1,11 +1,20 @@
 import type { PretableRemoteSignal } from "./types";
 
+export interface PreparationBudget {
+  remaining: number;
+  started: number;
+}
+export const createPreparationBudget = (): PreparationBudget => ({
+  remaining: 1024,
+  started: performance.now(),
+});
 /** Bounded preparation only. Published state is never mutated by these steps.
  * Timer tasks yield to rendering/input; promise-only yields would not. */
 export function prepareCooperatively<T>(
   steps: Generator<void, T>,
   signal: PretableRemoteSignal,
   current: () => boolean,
+  budget: PreparationBudget = createPreparationBudget(),
 ): Promise<{ ok: true; value: T } | { ok: false }> {
   return new Promise((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -34,7 +43,8 @@ export function prepareCooperatively<T>(
           cancel();
           return;
         }
-        for (let work = 0; work < 1024; work++) {
+        if (performance.now() - budget.started >= 2) budget.remaining = 0;
+        while (budget.remaining > 0) {
           const step = steps.next();
           if (finished) {
             steps.return(undefined as T);
@@ -45,10 +55,25 @@ export function prepareCooperatively<T>(
             resolve({ ok: true, value: step.value });
             return;
           }
+          budget.remaining--;
+          if (
+            (budget.remaining & 63) === 0 &&
+            performance.now() - budget.started >= 2
+          )
+            budget.remaining = 0;
         }
-        timer = setTimeout(run, 0);
+        timer = setTimeout(() => {
+          budget.remaining = 1024;
+          budget.started = performance.now();
+          run();
+        }, 0);
       } catch (error) {
         cleanup();
+        try {
+          steps.return(undefined as T);
+        } catch {
+          /* Preserve the original failure. */
+        }
         reject(error);
       }
     };
@@ -62,13 +87,14 @@ export function prepareCooperatively<T>(
 export function createPreparationQueue() {
   type Job = {
     signal: PretableRemoteSignal;
-    work: (() => Promise<void>) | undefined;
+    work: ((budget: PreparationBudget) => Promise<void>) | undefined;
     resolve: () => void;
     reject: (reason: unknown) => void;
     cancel: () => void;
   };
   const queued = new Set<Job>();
   let active = false;
+  let budget: PreparationBudget | undefined;
   function pump() {
     if (active) return;
     const job = queued.values().next().value;
@@ -85,7 +111,7 @@ export function createPreparationQueue() {
     active = true;
     let pending: Promise<void>;
     try {
-      pending = work();
+      pending = work((budget ??= createPreparationBudget()));
     } catch (error) {
       pending = Promise.reject(error);
     }
@@ -96,7 +122,7 @@ export function createPreparationQueue() {
   }
   return (
     signal: PretableRemoteSignal,
-    work: () => Promise<void>,
+    work: (budget: PreparationBudget) => Promise<void>,
   ): Promise<void> => {
     if (signal.aborted || queued.size + Number(active) >= 4)
       return Promise.resolve();

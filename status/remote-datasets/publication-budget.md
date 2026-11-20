@@ -119,3 +119,34 @@ rebase on bookkeeping changes, and phase-tagged final benchmarks. Cross-turn geo
 workspace accounting must be finalized before those phases are enabled. This checkpoint
 does not claim the full Task 9b processing gate. Core 326 tests passed; core build and
 API check passed. Core typecheck/lint and focused lifetime tests are rerun at commit.
+
+## Cooperative retention checkpoint (still incomplete)
+
+Success acceptance now carries one shared work budget through snapshot copying,
+validation, retention preparation, and sparse geometry, and across consecutive
+responses. A real timer task resets the budget; promise continuations do not.
+Preparation yields at 1024 primitive steps or the next 64-step check after 2 ms,
+leaving headroom for the synchronous atomic commit and publication. This bound
+requires final measured slice verification; a single primitive or user estimator
+is non-preemptible. Expansion and collapse remain synchronous.
+
+The raw operation's monotonic deadline remains active through preparation, separate
+from epoch session expiry. Metadata changes invalidate and close one candidate;
+a still-owned response rebases without refetching. No-op identical queries retain
+ownership. Tests cover late acceptance across the deadline, source/disposal,
+metadata rebasing, consecutive response budgets, and terminal refusal when lease
+metadata cannot fit. Throwing ownership guards close their suspended generators;
+throwing deadline observers cannot leave empty scheduler jobs.
+
+Built-in sizing now runs during the owned wire copy and charges all retained own
+keys, including undefined-valued properties that JSON serialization used to omit.
+It rejects over-responseBytes values before finishing the owned copy. The resulting
+byte count is reused during admission; custom sizing hooks still execute, including
+their reentrancy checks. Structural equality and summary validation also cooperate.
+The underlying transport must still bound decoded raw responses before delivery.
+
+Verification:342 core tests, lint, typecheck, build, and API check passed. This is
+an implementation checkpoint, not completion: the disjoint current/candidate
+metadata allowance audit, final ownership assertions, phase/whole-task timings,
+consumer/layout/renderer regressions, and final near-cap evidence remain pending.
+The earlier timing JSON is preserved and is not represented as final certification.
