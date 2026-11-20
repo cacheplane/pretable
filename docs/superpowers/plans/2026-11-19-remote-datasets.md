@@ -216,9 +216,11 @@ through `8bac387b`: immutable geometry reuse, cooperative admission, compact
 evidence, cancellation/deadline cleanup and incoming metadata reservation.
 Core 356, layout 163 and renderer 201 tests pass, along with public types and API
 checks. Repeated loaded-host diagnostics preserve 5,000 payloads/5,001 topology
-nodes: supported block size 1,000 passes observed limits, but default size 100
-still fails the preparation-slice maximum (15.901 ms). Quiet-host reproduction
-and any resulting fixes remain required. See `status/remote-datasets/publication-budget.md`.
+nodes. The historical series fails the default-size preparation maximum (15.901 ms).
+Review then corrected preparation accounting within commit-bearing turns; corrected
+smoke evidence still fails one synchronous-command p95 (8.154 ms). Neither series
+certifies a quiet host. Quiet-host reproduction and any resulting fixes remain
+required. See `status/remote-datasets/publication-budget.md`.
 
 ## Tasks
 
