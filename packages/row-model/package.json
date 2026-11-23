@@ -33,6 +33,6 @@
   },
   "devDependencies": {
     "@pretable-internal/calendar-date": "workspace:*",
-    "fast-check": "^4.10.2"
+    "fast-check": "^4.10.3"
   }
 }
